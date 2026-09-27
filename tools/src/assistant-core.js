@@ -25,7 +25,9 @@
   function norm(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
   function rowsOf(buf) {
     var wb = XLSX.read(buf, { type: "array" });
-    return wb.SheetNames.map(function (n) { return XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }); });
+    var out = wb.SheetNames.map(function (n) { return XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }); });
+    out.names = wb.SheetNames;
+    return out;
   }
   function findHeader(sheets, required) {
     for (var s = 0; s < sheets.length; s++) {
@@ -66,6 +68,12 @@
   /* ---------- loaders: detect the file by its header ---------- */
   function load(buf, name) {
     var sheets = rowsOf(buf);
+    var r = detect(sheets, name);
+    // every file, whatever its kind, can also be searched cell by cell
+    r.raw = sheets.map(function (rows, i) { return { name: sheets.names[i], rows: rows }; });
+    return r;
+  }
+  function detect(sheets, name) {
     var h = findHeader(sheets, ["item code", "subinventory", "quantity"]);
     if (h) return { kind: "stock", data: loadStock(h), name: name };
     h = findSummaryHeader(sheets);
@@ -343,7 +351,7 @@
 
   function need(kind) {
     var what = { stock: "Oracle-ийн үлдэгдлийн тайлан (жишээ нь 09-26 үлдэгдэл.xlsx)", requests: "Mine2TL-ийн засварын хүсэлтийн файл" }[kind];
-    return { text: "Энэ асуултад хариулахын тулд **" + what + "** хэрэгтэй. Дээрх \"Файл нэмэх\" хэсэгт оруулна уу." };
+    return { miss: true, text: "Энэ асуултад хариулахын тулд **" + what + "** хэрэгтэй. Дээрх \"Файл нэмэх\" хэсэгт оруулна уу." };
   }
   var HELP = {
     text: "Би оруулсан файлуудаас хайж хариулна. Жишээ асуултууд:",
@@ -657,7 +665,7 @@
       if (cat) Object.keys(cat).forEach(function (k) { if (hit(cat[k].search)) set[k] = 1; });
       codes = Object.keys(set);
     }
-    if (!codes.length) return { text: "\"" + question.trim() + "\" гэсэн сэлбэг " + (stock ? "Oracle-ийн үлдэгдэлд" : "") + (stock && cat ? " болон " : "") + (cat ? "гэрээт сэлбэгийн жагсаалтад" : "") + " олдсонгүй. Өөр үгээр, эдийн дугаараар эсвэл 13 оронтой Item code-оор хайгаад үзээрэй." };
+    if (!codes.length) return { miss: true, text: "\"" + question.trim() + "\" гэсэн сэлбэг " + (stock ? "Oracle-ийн үлдэгдэлд" : "") + (stock && cat ? " болон " : "") + (cat ? "гэрээт сэлбэгийн жагсаалтад" : "") + " олдсонгүй. Өөр үгээр, эдийн дугаараар эсвэл 13 оронтой Item code-оор хайгаад үзээрэй." };
     var qty = function (k) { var it = stock && stock[k]; return it ? it.tl + it.tkh : 0; };
     codes.sort(function (a, b) {
       return ((cat && cat[b] ? 1 : 0) - (cat && cat[a] ? 1 : 0)) || (qty(b) - qty(a)) || ((stock && stock[b] ? stock[b].total : 0) - (stock && stock[a] ? stock[a].total : 0));
@@ -757,9 +765,64 @@
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
   function notUnderstood(kb) {
     if (!kb.stock && !kb.catalog && !kb.requests)
-      return { text: "Энэ асуултад хариулахад файл хэрэгтэй. Oracle үлдэгдэл, гэрээт жагсаалт эсвэл засварын хүсэлтийн файлаа **нэг удаа** оруулна уу. Дараа нь энэ компьютерт хадгалагдах тул дахин оруулах шаардлагагүй.\nФайлгүйгээр нэр томьёоны тайлбар, таны заасан хариулт, энгийн яриа ажиллана.", examples: HELP.examples };
-    return { text: "Уучлаарай, асуултыг ойлгосонгүй. Жишээ асуултуудаас сонгоод үзээрэй.", examples: HELP.examples };
+      return { miss: true, text: "Энэ асуултад хариулахад файл хэрэгтэй. Oracle үлдэгдэл, гэрээт жагсаалт эсвэл засварын хүсэлтийн файлаа **нэг удаа** оруулна уу. Дараа нь энэ компьютерт хадгалагдах тул дахин оруулах шаардлагагүй.\nФайлгүйгээр нэр томьёоны тайлбар, таны заасан хариулт, энгийн яриа ажиллана.", examples: HELP.examples };
+    return { miss: true, text: "Уучлаарай, асуултыг ойлгосонгүй. Жишээ асуултуудаас сонгоод үзээрэй.", examples: HELP.examples };
   }
 
-  return { load: load, answer: answer, fold: fold, plateKey: plateKey, customKey: customKey, HELP: HELP };
+  /* ---------- search any loaded file, like Excel's filter ----------
+   * kb.files: {label: {name, kind, sheets: [{name, rows}]}}. A row matches when
+   * its text contains the phrase; failing that, when it contains every word.
+   * onlyKinds limits the files (e.g. ["unknown"] = files no other answer reads). */
+  function cellText(v) { return v == null ? "" : String(v); }
+  function headerIndex(rows) {
+    var best = 0, bestN = -1;
+    for (var i = 0; i < Math.min(rows.length, 15); i++) {
+      var n = (rows[i] || []).filter(function (c) { return typeof c === "string" && c.trim(); }).length;
+      if (n > bestN) { best = i; bestN = n; }
+    }
+    return best;
+  }
+  function searchFiles(question, kb, onlyKinds) {
+    var files = kb.files || {}, phrase = fold(phraseOf(question)).replace(/[?!.,]+$/, "").trim();
+    if (phrase.length < 2) return null;
+    var words = phrase.split(" ").filter(Boolean), groups = [], total = 0;
+    Object.keys(files).forEach(function (label) {
+      var f = files[label];
+      if (onlyKinds && onlyKinds.indexOf(f.kind) < 0) return;
+      f.sheets.forEach(function (sh) {
+        var rows = sh.rows || [];
+        if (!rows.length) return;
+        var hi = headerIndex(rows), texts = [], hits = [];
+        for (var r = hi + 1; r < rows.length; r++) {
+          var t = fold((rows[r] || []).map(cellText).join(" | "));
+          texts[r] = t;
+          if (t.indexOf(phrase) >= 0) hits.push(r);
+        }
+        if (!hits.length && words.length > 1) {
+          // every word somewhere in the row, the sheet name or the file name ("5704ӨМА дугуй")
+          var where = fold(f.name + " | " + sh.name) + " | ";
+          for (r = hi + 1; r < rows.length; r++) if (texts[r] && words.every(function (w) { return (where + texts[r]).indexOf(w) >= 0; }) && words.some(function (w) { return texts[r].indexOf(w) >= 0; })) hits.push(r);
+        }
+        if (!hits.length) return;
+        // keep the columns that have a header or a value in the hits
+        var width = Math.max.apply(null, [(rows[hi] || []).length].concat(hits.map(function (x) { return (rows[x] || []).length; })));
+        var cols = [];
+        for (var c = 0; c < width; c++) {
+          if (cellText((rows[hi] || [])[c]).trim() || hits.some(function (x) { return cellText((rows[x] || [])[c]).trim(); })) cols.push(c);
+        }
+        var head = ["Мөр"].concat(cols.map(function (c) { return cellText((rows[hi] || [])[c]).trim() || "Багана " + (c + 1); }));
+        var out = hits.map(function (x) { return [x + 1].concat(cols.map(function (c) { var v = (rows[x] || [])[c]; return v == null ? "" : v; })); });
+        total += hits.length;
+        groups.push({ title: f.name + (f.sheets.length > 1 ? " · " + sh.name : "") + " (" + hits.length + " мөр)", table: table(head, out, 200), sheet: sh.name });
+      });
+    });
+    if (!groups.length) return null;
+    return {
+      generic: true,
+      text: "**\"" + phraseOf(question).replace(/[?!.,]+$/, "") + "\"** гэсэн үг оруулсан файлуудаас **" + total + " мөрөөс** олдлоо (" + groups.length + " хүснэгт):",
+      tables: groups, exportName: phrase
+    };
+  }
+
+  return { load: load, answer: answer, searchFiles: searchFiles, fold: fold, plateKey: plateKey, customKey: customKey, HELP: HELP };
 });

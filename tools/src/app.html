@@ -199,7 +199,7 @@ input.wide { width: 170px; }
   <div id="tool-chat" hidden>
     <section class="panel">
       <h2>Файлууд</h2>
-      <div class="drop" id="c-drop">Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт эсвэл <b>гэрээт сэлбэгийн жагсаалтын</b> (2025 item) файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Бусад табад оруулсан файлыг автоматаар ашиглана. Нэг оруулсан файлыг дараа нээхэд дахин оруулах шаардлагагүй, энэ компьютерт хадгалагдана.</small></div>
+      <div class="drop" id="c-drop"><b>Ямар ч Excel файл</b> (Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт, гэрээт жагсаалт, бусад) энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Танигдаагүй файлаас ч хайсан үгээ Excel-ийн filter шиг мөрөөр нь олно. Бусад табад оруулсан файлыг автоматаар ашиглана. Нэг оруулсан файлыг дараа нээхэд дахин оруулах шаардлагагүй, энэ компьютерт хадгалагдана.</small></div>
       <input type="file" id="c-files" multiple accept=".xlsx,.xls" hidden>
       <div class="chips" id="c-sources"></div>
     </section>
@@ -695,13 +695,13 @@ input.wide { width: 170px; }
   }
   function renderSources() {
     var names = Object.keys(sources);
-    $("c-sources").innerHTML = names.length ? names.map(function (k) { return '<span class="chip src">✓ ' + esc(k) + ": " + esc(sources[k]) + "</span>"; }).join("")
+    $("c-sources").innerHTML = names.length ? names.map(function (k) { return '<span class="chip src">✓ ' + (/^Файл · /.test(k) ? "" : esc(k) + ": ") + esc(sources[k]) + "</span>"; }).join("")
       : '<span class="sub" style="margin:0">Одоогоор файл алга.</span>';
     if (names.length) {
       var forget = document.createElement("button"); forget.type = "button"; forget.className = "chip"; forget.textContent = "Файлуудыг мартах";
       forget.onclick = function () {
         ["stock", "requests", "catalog"].forEach(function (k) { delete kb[k]; });
-        kb.suppliers = {}; sources = {}; forgot = true;
+        kb.suppliers = {}; kb.files = {}; sources = {}; forgot = true;
         try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ }
         idb("readwrite", function (st) { return st.clear(); }).catch(function () { /* ignore */ });
         renderSources();
@@ -721,10 +721,12 @@ input.wide { width: 170px; }
     else if (r.kind === "catalog") label = "Гэрээт сэлбэг";
     else if (r.kind === "maint") label = "ТҮ-ний сэлбэг";
     else if (r.kind === "supplier") label = sup = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(name) ? "Очлуур од" : /aode|аодэ/i.test(name) ? "AODE" : "Parts and oil";
-    else if (hint === undefined && fresh) bot({ text: "**" + name + "** файлыг танисангүй. Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файл оруулна уу." });
+    else label = "Файл · " + name;   // any other file: searched cell by cell
     if (label && !fresh && sources[label] && !/хадгалсан\)$/.test(sources[label])) return; // added this session: keep it
-    if (!label) return;
-    if (sup) kb.suppliers[sup] = r.data; else kb[r.kind] = r.data;
+    if (sup) kb.suppliers[sup] = r.data; else if (r.kind !== "unknown") kb[r.kind] = r.data;
+    kb.files = kb.files || {};
+    kb.files[label] = { name: name, kind: r.kind, sheets: r.raw };
+    if (r.kind === "unknown" && fresh && hint === undefined) bot({ text: "**" + name + "**-ийг хайлтад нэмлээ. Одоо энэ файлаас дурын үгээр хайж болно." });
     sources[label] = fresh ? name : name + " (хадгалсан)";
     if (fresh) keep(label, name, buf, hint);
     renderSources();
@@ -745,13 +747,19 @@ input.wide { width: 170px; }
   }
   function bot(a) {
     say("bot", md(a.text).replace(/\n/g, "<br>") + tableHtml(a.table) + (a.detail ? '<div class="sub" style="margin:8px 0 0">' + esc(a.detailTitle || "Агуулах, тавиураар:") + "</div>" + tableHtml(a.detail) : ""));
-    if (a.exportName && a.table && a.table.all) {
+    if (a.tables) {
+      var box = $("c-log").lastChild;
+      a.tables.forEach(function (t) { box.insertAdjacentHTML("beforeend", '<div class="sub" style="margin:10px 0 0"><b>' + esc(t.title) + "</b></div>" + tableHtml(t.table)); });
+    }
+    if (a.exportName && ((a.table && a.table.all) || a.tables)) {
       var b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.style.marginTop = "8px"; b.textContent = "⬇ Excel болгож татах";
       b.onclick = function () {
         // "1,606" style display numbers back to real numbers (13-digit codes stay text)
         var num = function (rows) { return rows.map(function (r) { return r.map(function (c) { return typeof c === "string" && /^-?\d{1,3}(,\d{3})*(\.\d+)?$/.test(c) ? parseFloat(c.replace(/,/g, "")) : c; }); }); };
-        var wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([a.table.head].concat(num(a.table.all))), "Хайлт");
+        var wb = XLSX.utils.book_new(), used = {};
+        var sheetName = function (t) { var n = t.replace(/[\\/?*[\]:]/g, " ").slice(0, 28), k = n, i = 2; while (used[k]) k = n + " " + i++; used[k] = 1; return k; };
+        if (a.table) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([a.table.head].concat(num(a.table.all))), sheetName("Хайлт"));
+        (a.tables || []).forEach(function (t) { XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([t.table.head].concat(t.table.all)), sheetName(t.title.replace(/\s*\(\d+ мөр\)$/, ""))); });
         if (a.detail) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([a.detail.head].concat(num(a.detail.all))), "Сэлбэгээр");
         XLSX.writeFile(wb, "hailt_" + new Date().toISOString().slice(0, 10) + ".xlsx");
       };
@@ -770,7 +778,14 @@ input.wide { width: 170px; }
   function ask(q) {
     if (!q.trim()) return;
     say("me", esc(q));
-    try { bot(AssistantCore.answer(q, kb)); } catch (e) { bot({ text: "Алдаа гарлаа: " + (e && e.message ? e.message : e) }); }
+    try {
+      var a = AssistantCore.answer(q, kb);
+      // nothing found by the dedicated answers: search every loaded file like Excel's filter
+      if (a.miss) { var g = AssistantCore.searchFiles(q, kb, null); if (g) a = g; }
+      bot(a);
+      // a parts search also looks in the files no other answer reads
+      if (!a.generic && (a.table || a.miss)) { var x = AssistantCore.searchFiles(q, kb, ["unknown"]); if (x) bot(x); }
+    } catch (e) { bot({ text: "Алдаа гарлаа: " + (e && e.message ? e.message : e) }); }
     if (kb.dirty) saveKb();
     $("c-input").value = "";
   }
