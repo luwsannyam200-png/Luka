@@ -70,7 +70,11 @@ table.report tr.light td { background: var(--light); color: #000; }
 .stat b { display: block; font-size: 20px; }
 .stat span { color: var(--muted); font-size: 12px; }
 .stat.hot b { color: var(--bad); }
-.tabs { grid-template-columns: 1fr 1fr 1fr; }
+.tabs { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 900px) { .tabs { grid-template-columns: 1fr 1fr; } }
+select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); }
+table.plain td, table.plain th { text-align: left; white-space: normal; }
+input.wide { width: 170px; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
 .chip.src { cursor: default; background: var(--ok-bg); color: var(--ok); border-color: transparent; }
@@ -100,6 +104,7 @@ table.report tr.light td { background: var(--light); color: #000; }
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-weekly" data-tool="weekly"><b>📦 Weekly үлдэгдэл</b><span>Weekly draft-д өнөөдрийн sheet нэмэх</span></button>
     <button class="tab" role="tab" id="tab-zasvar" data-tool="zasvar"><b>🔧 Засварын хүсэлт</b><span>Mine2TL-ийн хүсэлтээс тайлан гаргах</span></button>
+    <button class="tab" role="tab" id="tab-medee" data-tool="medee"><b>📋 Засварын мэдээ</b><span>Mine2TL-ийн мэдээг цэвэрлэж цаг бодох</span></button>
     <button class="tab" role="tab" id="tab-chat" data-tool="chat"><b>💬 Туслах</b><span>Файлуудаас асуултаар хайх</span></button>
   </div>
 
@@ -156,6 +161,40 @@ table.report tr.light td { background: var(--light); color: #000; }
     </section>
   </div>
 
+  <!-- ================= MEDEE ================= -->
+  <div id="tool-medee" hidden>
+    <section class="panel">
+      <h2>1. Файл</h2>
+      <div class="drop" id="m-drop">Mine2TL-ээс гаргасан <b>засварын мэдээний</b> Excel файлаа ("Хэсгийн №" баганатай) энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.</div>
+      <input type="file" id="m-file" accept=".xlsx" hidden>
+      <div class="slots"><div class="slot"><div class="label">Засварын мэдээ<small>заавал, .xlsx</small></div><div class="file" id="m-name">сонгоогүй</div><div class="row"><button class="btn" id="m-pick">Сонгох</button></div></div></div>
+      <div id="m-check"></div>
+    </section>
+    <section class="panel" id="m-confirm" hidden>
+      <h2>2. Шалгаж батлах</h2>
+      <p class="sub" style="margin:0 0 8px">Дуудлага болон "Замд" мөрийн байршлыг механикийн байршлаар солино. Механикууд байршлаа сольдог тул файл бүрээс автоматаар танина. Буруу бол засна уу.</p>
+      <div class="tablewrap"><table class="plain"><thead><tr><th>Механик</th><th>Энэ файлд ажилласан</th><th>Байршил</th></tr></thead><tbody id="m-mech"></tbody></table></div>
+      <div id="m-tuBox" hidden>
+        <h2 style="margin-top:16px">ТҮ-ний санал</h2>
+        <p class="sub" style="margin:0 0 8px">Төлөвлөгөөт + Ачигч мөрийн Дис тайлбар хоосон байна. Мех тайлбараас ТҮ-г санал болгов. Зөв бол чагтална уу. Чагтлаагүй мөр хоосон үлдэнэ.</p>
+        <div class="tablewrap"><table class="plain"><thead><tr><th></th><th>Техникийн №</th><th>Мех тайлбар</th><th>Дис тайлбарт бичих</th></tr></thead><tbody id="m-tu"></tbody></table></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <label>Дуусаагүй засварын дуусах цаг: <input type="text" class="wide" id="m-end"></label>
+        <label>Файлын нэр: <input type="text" class="wide" id="m-out"></label>
+        <button class="btn primary" id="m-go">Боловсруулах</button>
+        <span id="m-status" class="sub" style="margin:0"></span>
+      </div>
+      <p class="sub" style="margin:6px 0 0;font-size:13px">Дуусах цаг нь эхний дууссан (саарал) мөрийн өдрийн 06:00. Өөр цаг бол YYYY-MM-DD HH:MM хэлбэрээр бичнэ.</p>
+      <div id="m-result"></div>
+    </section>
+    <section class="panel" id="m-preview" hidden>
+      <h2>3. Үр дүн</h2>
+      <div class="stats" id="m-stats"></div>
+      <div class="tablewrap"><table class="plain" id="m-table"></table></div>
+    </section>
+  </div>
+
   <!-- ================= ASSISTANT ================= -->
   <div id="tool-chat" hidden>
     <section class="panel">
@@ -186,6 +225,7 @@ table.report tr.light td { background: var(--light); color: #000; }
 <script>/*XLSX*/</script>
 <script>/*WEEKLY_CORE*/</script>
 <script>/*ZASVAR_CORE*/</script>
+<script>/*MEDEE_CORE*/</script>
 <script>/*ASSISTANT_CORE*/</script>
 <script>
 (function () {
@@ -218,7 +258,7 @@ table.report tr.light td { background: var(--light); color: #000; }
 
   /* ---------- tool switcher ---------- */
   function choose(tool) {
-    ["weekly", "zasvar", "chat"].forEach(function (t) {
+    ["weekly", "zasvar", "medee", "chat"].forEach(function (t) {
       $("tool-" + t).hidden = t !== tool;
       $("tab-" + t).setAttribute("aria-selected", String(t === tool));
     });
@@ -227,9 +267,9 @@ table.report tr.light td { background: var(--light); color: #000; }
   }
   Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) { b.onclick = function () { choose(b.dataset.tool); }; });
   var start = location.hash.slice(1);
-  if (["weekly", "zasvar", "chat"].indexOf(start) < 0) { try { start = localStorage.getItem("tool"); } catch (e) { start = null; } }
-  choose(["zasvar", "chat"].indexOf(start) >= 0 ? start : "weekly");
-  window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (["weekly", "zasvar", "chat"].indexOf(t) >= 0) choose(t); });
+  if (["weekly", "zasvar", "medee", "chat"].indexOf(start) < 0) { try { start = localStorage.getItem("tool"); } catch (e) { start = null; } }
+  choose(["zasvar", "medee", "chat"].indexOf(start) >= 0 ? start : "weekly");
+  window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (["weekly", "zasvar", "medee", "chat"].indexOf(t) >= 0) choose(t); });
 
   /* ================= WEEKLY ================= */
   var SLOTS = [
@@ -412,6 +452,80 @@ table.report tr.light td { background: var(--light); color: #000; }
     $("z-table").innerHTML = h;
     $("z-preview").hidden = false;
   }
+
+  /* ================= MEDEE ================= */
+  var mfile = null, mbuf = null, mrep = null;
+  var LOCS = ["Ухаа худаг", "Цагаан хад"];
+  function memMech() { try { return JSON.parse(localStorage.getItem("mech") || "{}"); } catch (e) { return {}; } }
+  async function setM(list) {
+    var f = list[0];
+    if (!f) return;
+    $("m-confirm").hidden = true; $("m-preview").hidden = true; $("m-result").innerHTML = "";
+    if (!/\.xlsx$/i.test(f.name)) { show("m-check", "bad", "Зөвхөн .xlsx файл оруулна уу. Excel дээр нээгээд <b>Save As → Excel Workbook (.xlsx)</b> хийнэ үү."); return; }
+    mfile = f; $("m-name").textContent = f.name; $("m-name").classList.add("set");
+    show("m-check", "ok", "Уншиж байна…");
+    try {
+      mbuf = await read(f);
+      mrep = await MedeeCore.checkMedee(mbuf);
+    } catch (e) { mrep = null; show("m-check", "bad", "<b>Алдаа:</b> " + esc(e && e.message ? e.message : e)); return; }
+    $("m-check").innerHTML = "";
+    show("m-check", "ok", "<b>" + mrep.rows + "</b> мөр уншлаа" + (mrep.dropped_rows ? ", доод талын нийт дүнгийн " + mrep.dropped_rows + " мөрийг хасна" : "") + (mrep.red_rows ? ". Улаан " + mrep.red_rows + " мөрийг цэнхэр гэж тооцно" : "") + ".");
+    if (mrep.warnings.length) show("m-check", "warn", "<ul class='notes'>" + mrep.warnings.map(function (w) { return "<li>" + esc(w) + "</li>"; }).join("") + "</ul>", true);
+    var mem = memMech();
+    $("m-mech").innerHTML = mrep.mechanics_needed.map(function (m, i) {
+      var info = mrep.mechanics[m], pick = info.auto || mem[m] || "";
+      var counts = Object.keys(info.counts).map(function (l) { return l + ": " + info.counts[l]; }).join(", ") || "УХ/ЦХ-д ажил алга";
+      return '<tr class="' + (info.auto ? "" : "warn") + '"><td>' + esc(m == null ? "(хоосон)" : m) + "</td><td>" + esc(counts) + (info.auto ? "" : " <b>, сонгоно уу</b>") + "</td>" +
+        '<td><select data-i="' + i + '"><option value="">— сонгох —</option>' + LOCS.map(function (l) { return "<option" + (l === pick ? " selected" : "") + ">" + l + "</option>"; }).join("") + "</select></td></tr>";
+    }).join("") || '<tr><td colspan="3" class="sub">Дуудлага эсвэл "Замд" мөр алга.</td></tr>';
+    $("m-tuBox").hidden = !mrep.tu_suggestions.length;
+    $("m-tu").innerHTML = mrep.tu_suggestions.map(function (t, i) {
+      return '<tr><td><input type="checkbox" data-i="' + i + '"' + (t.suggest ? "" : "") + "></td><td>" + esc(t.tech) + "</td><td>" + esc(t.mex || "") + '</td><td><input type="text" data-t="' + i + '" value="' + esc(t.suggest || "") + '" placeholder="жишээ нь ТҮ-2"></td></tr>';
+    }).join("");
+    $("m-end").value = mrep.default_end || "";
+    $("m-out").value = mrep.default_end ? "ZM_" + mrep.default_end.slice(8, 10) + ".xlsx" : "ZM.xlsx";
+    $("m-confirm").hidden = false;
+  }
+  wireDrop("m-drop", "m-file", setM);
+  $("m-pick").onclick = function () { $("m-file").click(); };
+  $("m-go").onclick = async function () {
+    if (!mrep) return;
+    var mech = {}, missing = [], mem = memMech();
+    Array.prototype.forEach.call($("m-mech").querySelectorAll("select"), function (sel) {
+      var m = mrep.mechanics_needed[+sel.dataset.i], info = mrep.mechanics[m];
+      if (!sel.value) { missing.push(m); return; }
+      if (sel.value !== info.auto) mech[m] = sel.value;
+      if (!info.auto) mem[m] = sel.value;
+    });
+    if (missing.length) { show("m-result", "bad", "Байршлаа сонгоно уу: <b>" + missing.map(esc).join(", ") + "</b>"); return; }
+    try { localStorage.setItem("mech", JSON.stringify(mem)); } catch (e) { /* storage unavailable */ }
+    var tu = {};
+    Array.prototype.forEach.call($("m-tu").querySelectorAll("input[type=checkbox]"), function (cb) {
+      var v = $("m-tu").querySelector('input[data-t="' + cb.dataset.i + '"]').value.trim();
+      if (cb.checked && v) tu[mrep.tu_suggestions[+cb.dataset.i].tech] = v;
+    });
+    var end = $("m-end").value.trim();
+    if (end && MedeeCore.parseEnd(end) == null) { show("m-result", "bad", "Дуусах цагийг YYYY-MM-DD HH:MM хэлбэрээр бичнэ үү. Жишээ нь 2026-09-27 06:00"); return; }
+    $("m-go").disabled = true; $("m-preview").hidden = true; $("m-result").innerHTML = ""; $("m-status").textContent = "Боловсруулж байна…"; await tick();
+    try {
+      var res = await MedeeCore.buildMedee(mbuf, { mech: mech, tu: tu, end: end || null });
+      var r = res.report, name = $("m-out").value.trim() || r.fileName;
+      if (!/\.xlsx$/i.test(name)) name += ".xlsx";
+      var ok = show("m-result", "ok", "<b>Бэлэн боллоо.</b> Дуусаагүй (цэнхэр) " + r.blue + ", дууссан (саарал) " + r.gray + " мөр. Дуусах цаг: " + esc(r.end) + ".");
+      var btn = document.createElement("button"); btn.className = "btn primary"; btn.style.marginLeft = "10px"; btn.textContent = "Татаж авах";
+      btn.onclick = function () { download(res.bytes, name); };
+      ok.appendChild(btn);
+      if (r.warnings.length) show("m-result", "warn", "<b>Анхаарах:</b><ul class='notes'>" + r.warnings.map(function (w) { return "<li>" + esc(w) + "</li>"; }).join("") + "</ul>", true);
+      var stat = function (label, n) { return '<div class="stat"><b>' + n + "</b><span>" + esc(label) + "</span></div>"; };
+      $("m-stats").innerHTML = stat("Нийт мөр", r.rows) + stat("Цэнхэр", r.blue) + stat("Саарал", r.gray) +
+        Object.keys(r.locations).map(function (l) { return stat(l, r.locations[l]); }).join("");
+      $("m-table").innerHTML = "<thead><tr><th>Үйлчилгээ</th><th>Мөр</th></tr></thead><tbody>" + Object.keys(r.services).sort(function (a, b) { return r.services[b] - r.services[a]; })
+        .map(function (sv) { return "<tr><td>" + esc(sv || "(хоосон)") + "</td><td>" + r.services[sv] + "</td></tr>"; }).join("") + "</tbody>";
+      $("m-preview").hidden = false;
+    } catch (e) {
+      show("m-result", "bad", "<b>Алдаа:</b> " + (e.problems ? "<ul class='notes'>" + e.problems.map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ul>" : esc(e && e.message ? e.message : e)));
+    } finally { $("m-status").textContent = ""; $("m-go").disabled = false; }
+  };
 
   /* ================= ASSISTANT ================= */
   var kb = { suppliers: {} }, sources = {};
@@ -599,7 +713,7 @@ table.report tr.light td { background: var(--light); color: #000; }
   renderKb();
   bot({ text: "Сайн байна уу" + (kb.user ? ", " + kb.user : "") + "! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, эдийн дугаар, засварын хүсэлтийг хайж, засварын нэр томьёог тайлбарлана. Энгийнээр ярилцаж ч болно. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
 
-  if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore || !window.AssistantCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");
+  if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore || !window.MedeeCore || !window.AssistantCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");
 })();
 </script>
 </body>
