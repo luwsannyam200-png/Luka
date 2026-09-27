@@ -1587,6 +1587,56 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     // Latin and Cyrillic look-alikes: "т7н", "Т7Х" = "t7h"; "хово" = "howo"
     return fold(s).replace(/хово/g, "howo").replace(/т/g, "t").replace(/[нх]/g, "h").replace(/[оo]/g, "o");
   }
+  /* A ТҮ-table code that no loaded file knows: look for the same part under
+   * another code, by its Mongolian name (and the machine, e.g. "371"). */
+  function knownCode(code, kb) {
+    if (kb.stock && kb.stock[code]) return true;
+    var sup = kb.suppliers || {};
+    return Object.keys(sup).some(function (n) { return sup[n][code] != null; });
+  }
+  function altByName(p, machine, kb) {
+    var name = (String(p.name).match(/[А-Яа-яЁёӨөҮү]+/g) || []).join(" ");
+    if (name.length < 4) return [];
+    var want = fold(name), model = maintKey(machine).split(" ").filter(function (t) { return t !== "howo" && t.length > 1; });
+    var hits = {};
+    var add = function (code, desc) {
+      if (!code || code === p.code) return;
+      var d = fold(desc), at = d.indexOf(want);
+      if (at < 0) return;
+      var h = hits[code] || (hits[code] = { code: code, desc: String(desc).split(code).join(" ").replace(/\|+/g, " ").replace(/\s+/g, " ").trim(), score: 0 });
+      // the whole word ("тунгаагуур", not "тунгаагуурын") and the same machine count most
+      var whole = !/[а-яёa-z]/.test(d.charAt(at + want.length));
+      var mod = model.some(function (t) { return maintKey(desc).indexOf(t) >= 0; });
+      h.score = Math.max(h.score, (whole ? 2 : 0) + (mod ? 2 : 0)) + (h.seen ? 1 : 0);
+      h.seen = true;   // found in more than one file
+    };
+    if (kb.stock) Object.keys(kb.stock).forEach(function (c) { var it = kb.stock[c]; add(c, it.mn + " " + it.en); });
+    Object.keys(kb.files || {}).forEach(function (l) {
+      var f = kb.files[l];
+      if (f.kind !== "supplier") return;
+      f.sheets.forEach(function (sh) {
+        (sh.rows || []).forEach(function (r) {
+          var c = (r || []).map(cellText).filter(function (x) { return /^\d{13}$/.test(x.trim()); })[0];
+          if (c) add(c.trim(), (r || []).map(cellText).join(" "));
+        });
+      });
+    });
+    var list = Object.keys(hits).map(function (c) { return hits[c]; });
+    var best = Math.max.apply(null, [0].concat(list.map(function (h) { return h.score; })));
+    return list.filter(function (h) { return h.score === best; }).slice(0, 3);
+  }
+  function altNote(p, machine, kb) {
+    if (knownCode(p.code, kb)) return "";
+    var alts = altByName(p, machine, kb);
+    if (!alts.length) return "";
+    var sup = kb.suppliers || {};
+    return "\n⚠ **" + p.code + "** (" + p.name + ") кодоор Oracle болон нийлүүлэгчийн файлд алга. Ижил нэртэй өөр код: " + alts.map(function (h) {
+      var it = kb.stock && kb.stock[h.code], parts = [];
+      if (it) parts.push("УХ " + fmt(it.tl) + ", ЦХ " + fmt(it.tkh));
+      Object.keys(sup).forEach(function (n) { if (sup[n][h.code] != null) parts.push(n + " " + fmt(sup[n][h.code])); });
+      return "**" + h.code + "** " + h.desc.slice(0, 60) + (parts.length ? " (" + parts.join(", ") + ")" : "");
+    }).join("; ") + ". ТҮ-ний хүснэгтийн код зөв эсэхийг шалгана уу.";
+  }
   function maintKits(kb) {
     var byName = {};
     MAINT.concat(kb.maint || []).forEach(function (k) { byName[maintKey(k.name)] = k; });
@@ -1643,6 +1693,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         var sh = function (w, nm) { return short[w].length ? nm + "-д **хүрэлцэхгүй " + short[w].length + "**: " + short[w].join(", ") : nm + "-д бүгд хүрэлцэнэ ✅"; };
         txt += "\n" + sh("TL", "УХ") + "\n" + sh("TKH", "ЦХ");
       } else txt += "\nOracle-ийн үлдэгдэл оруулбал УХ, ЦХ-д хүрэлцэх эсэхийг харуулна.";
+      if (stock || Object.keys(kb.suppliers || {}).length) parts.forEach(function (p) { txt += altNote(p, k.name, kb); });
       return { text: txt, table: table(head, rows, 100), exportName: k.name + "_TU" };
     }
     if (picked.length === 1) {
@@ -2055,7 +2106,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     maintKits(kb).forEach(function (k) {
       k.parts.forEach(function (p) {
         if (code ? p.code !== code[0] : fold(p.name).indexOf(phrase) < 0) return;
-        var f = found[p.code] || (found[p.code] = { name: p.name, uses: [] });
+        var f = found[p.code] || (found[p.code] = { name: p.name, uses: [], part: p, machine: k.name });
         var lv = k.levels.map(function (l, i) { return p.qty[i] ? l.label.replace(/\s*\(.*$/, "") + ": " + p.qty[i] : null; }).filter(Boolean);
         f.uses.push(k.name + " (" + lv.join(", ") + ")");
       });
@@ -2065,8 +2116,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var codes = Object.keys(found);
     if (!codes.length) return null;
     return {
-      text: "Oracle-ийн үлдэгдлийн файл оруулаагүй тул **УХ, ЦХ-ийн тоог** хэлж чадахгүй байна. Үлдэгдлээ (жишээ нь 09-26 үлдэгдэл.xlsx) нэг удаа оруулбал хадгалагдана." +
-        "\nМэдэж байгаа нь: **" + codes.length + "** сэлбэг" + (supNames.length ? ", нийлүүлэгчийн үлдэгдэлтэй" : "") + ".",
+      text: "Oracle-ийн үлдэгдлийн файл оруулаагүй тул **УХ, ЦХ-ийн тоог** хэлж чадахгүй байна. Үлдэгдлээ (жишээ нь 09-26 үлдэгдэл.xlsx) энэ табын дээд хэсэгт эсвэл Weekly таб дээр нэг удаа оруулбал хадгалагдана." +
+        (Object.keys(kb.files || {}).length ? "\nОдоо оруулсан файлууд: " + Object.keys(kb.files).map(function (l) { return kb.files[l].name; }).join(", ") + "." : "") +
+        "\nМэдэж байгаа нь: **" + codes.length + "** сэлбэг" + (supNames.length ? ", нийлүүлэгчийн үлдэгдэлтэй" : "") + "." +
+        codes.map(function (c) { return found[c].part ? altNote(found[c].part, found[c].machine, kb) : ""; }).join(""),
       table: table(["Item code", "Сэлбэг", "ТҮ-д орох"].concat(supNames), codes.map(function (c) {
         return [c, found[c].name, found[c].uses.join("; ") || "—"].concat(supNames.map(function (n) { return fmt(sup[n][c] || 0); }));
       }), 50),
@@ -2239,7 +2292,6 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function assign(list) {
     var skipped = [];
     Array.prototype.forEach.call(list, function (f) {
-      if (/TL_TKH|\(\d+\)/i.test(f.name) && !/weekly/i.test(f.name)) { skipped.push(f.name); return; }
       var hit = null;
       for (var i = 0; i < ORDER.length && !hit; i++) {
         var s = SLOTS.filter(function (x) { return x.key === ORDER[i]; })[0];

@@ -328,7 +328,6 @@ input.wide { width: 170px; }
   function assign(list) {
     var skipped = [];
     Array.prototype.forEach.call(list, function (f) {
-      if (/TL_TKH|\(\d+\)/i.test(f.name) && !/weekly/i.test(f.name)) { skipped.push(f.name); return; }
       var hit = null;
       for (var i = 0; i < ORDER.length && !hit; i++) {
         var s = SLOTS.filter(function (x) { return x.key === ORDER[i]; })[0];
