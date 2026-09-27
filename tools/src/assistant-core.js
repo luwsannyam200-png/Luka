@@ -62,9 +62,42 @@
     if (h) return { kind: "stock", data: loadStock(h), name: name };
     h = findHeader(sheets, ["засварын төрөл", "засварын байршил", "үйлчилгээ", "хүсэлт гаргасан"]);
     if (h) return { kind: "requests", data: loadRequests(h), name: name };
+    h = findCatalogHeader(sheets);
+    if (h) return { kind: "catalog", data: loadCatalog(h), name: name };
     var sup = loadSupplier(sheets[0]);
     if (Object.keys(sup).length) return { kind: "supplier", data: sup, name: name };
     return { kind: "unknown", name: name };
+  }
+  /* Spare-part list (e.g. "2025 item.xlsx": Item дугаар | Сэлбэгийн нэр, or the
+   * older Item.xlsx: Item | Description | Эдийн дугаар | Техникийн төрөл | Бүлэг). */
+  function findCatalogHeader(sheets) {
+    for (var s = 0; s < sheets.length; s++) {
+      for (var i = 0; i < Math.min(sheets[s].length, 10); i++) {
+        var names = sheets[s][i].map(norm);
+        var code = names.findIndex(function (n) { return n === "item" || n.indexOf("item дугаар") === 0 || n === "item code"; });
+        var desc = names.findIndex(function (n) { return n.indexOf("сэлбэгийн нэр") === 0 || n === "description"; });
+        if (code >= 0 && desc >= 0) return { rows: sheets[s], hi: i, names: names, code: code, desc: desc };
+      }
+    }
+    return null;
+  }
+  function loadCatalog(h) {
+    var extra = { type: col(h, "техникийн төрөл"), group: col(h, "бүлэг"), en: col(h, "english short name") };
+    var parts = ["эдийн дугаар", "эдийн дугаар 2", "эдийн дугаар 3"].map(function (n) { return col(h, n); }).filter(function (i) { return i >= 0; });
+    var out = {};
+    h.rows.slice(h.hi + 1).forEach(function (r) {
+      var code = r[h.code];
+      if (code == null || !/^\d{6,}$/.test(String(code).trim())) return;
+      code = String(code).trim();
+      var desc = String(r[h.desc] || "").trim();
+      var segs = desc.split("|").map(function (x) { return x.trim(); }).filter(Boolean);
+      var mn = segs.filter(function (x) { return /[А-Яа-яӨөҮү]/.test(x); }).pop() || "";
+      var pn = parts.map(function (i) { return r[i]; }).filter(Boolean).join(" ");
+      out[code] = { code: code, desc: desc, en: (extra.en >= 0 && r[extra.en]) || segs[0] || "", mn: mn,
+        type: extra.type >= 0 ? r[extra.type] || "" : "", group: extra.group >= 0 ? r[extra.group] || "" : "",
+        search: fold(code + " " + desc + " " + pn + " " + (extra.en >= 0 ? r[extra.en] || "" : "")) };
+    });
+    return out;
   }
   function loadStock(h) {
     var c = { code: col(h, "item code"), en: col(h, "item description"), mn: col(h, "item mongolian description"),
@@ -133,7 +166,7 @@
   }
   var HELP = {
     text: "Би оруулсан файлуудаас хайж хариулна. Жишээ асуултууд:",
-    examples: ["маслын шүүр хэд байна", "4016150400048 хаана байна", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт"]
+    examples: ["маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "2025 жагсаалтаас агуулахад байхгүй"]
   };
 
   function answer(question, kb) {
@@ -207,32 +240,62 @@
       };
     }
 
-    // stock lookup
-    var stock = kb.stock;
-    if (!stock) return /\d{13}|шуур|улдэгдэл|сэлбэг|хэд байна|хаана/.test(q) ? need("stock") : notUnderstood(kb);
+    // spare parts: Oracle stock and/or the spare-part list (catalog)
+    var stock = kb.stock, cat = kb.catalog;
+    if (!stock && !cat) return /\d{13}|шуур|улдэгдэл|сэлбэг|хэд байна|хаана/.test(q) ? need("stock") : notUnderstood(kb);
+
+    // items of the list that are not in stock
+    if (cat && /(2025|жагсаалт)/.test(q) && /(байхгуй|алга|дууссан|дутуу|0)/.test(q)) {
+      if (!stock) return need("stock");
+      var none = Object.keys(cat).map(function (k) { return cat[k]; }).filter(function (c) {
+        var it = stock[c.code]; return !it || it.tl + it.tkh === 0;
+      });
+      return {
+        text: "Сэлбэгийн жагсаалтын **" + Object.keys(cat).length + "** сэлбэгээс **" + none.length + "** нь TL, TKH агуулахад алга (0).",
+        table: table(["Item code", "Нэр", "Бусад агуулах"], none.map(function (c) {
+          var it = stock[c.code]; return [c.code, c.mn || c.en, fmt(it ? it.total : 0)];
+        }), 30)
+      };
+    }
+
     var code = /\b\d{13}\b/.exec(question);
-    var found;
+    var codes;
     if (code) {
-      found = stock[code[0]] ? [stock[code[0]]] : [];
+      codes = (stock && stock[code[0]]) || (cat && cat[code[0]]) ? [code[0]] : [];
     } else {
       var words = q.replace(/[?.,!]/g, " ").split(" ").filter(function (w) { return w && STOP.map(fold).indexOf(w) < 0; });
       if (!words.length) return notUnderstood(kb);
-      var stems = words.map(function (w) { return w.length > 5 ? w.slice(0, w.length - 2) : w; });
-      found = Object.keys(stock).map(function (k) { return stock[k]; })
-        .filter(function (it) { return stems.every(function (s) { return it.search.indexOf(s) >= 0; }); })
-        .sort(function (a, b) { return (b.tl + b.tkh) - (a.tl + a.tkh) || b.total - a.total; });
+      var stems = words.map(function (w) { return w.length > 5 && /[а-я]/.test(w) ? w.slice(0, w.length - 2) : w; });
+      var hit = function (text) { return stems.every(function (st) { return text.indexOf(st) >= 0; }); };
+      var set = {};
+      if (stock) Object.keys(stock).forEach(function (k) { if (hit(stock[k].search) || (cat && cat[k] && hit(cat[k].search))) set[k] = 1; });
+      if (cat) Object.keys(cat).forEach(function (k) { if (hit(cat[k].search)) set[k] = 1; });
+      codes = Object.keys(set);
     }
-    if (!found.length) return { text: "\"" + question.trim() + "\" гэсэн сэлбэг Oracle-ийн үлдэгдэлд олдсонгүй. Өөр үгээр, эсвэл 13 оронтой Item code-оор хайгаад үзээрэй." };
+    if (!codes.length) return { text: "\"" + question.trim() + "\" гэсэн сэлбэг " + (stock ? "Oracle-ийн үлдэгдэлд" : "") + (stock && cat ? " болон " : "") + (cat ? "сэлбэгийн жагсаалтад" : "") + " олдсонгүй. Өөр үгээр, эдийн дугаараар эсвэл 13 оронтой Item code-оор хайгаад үзээрэй." };
+    var qty = function (k) { var it = stock && stock[k]; return it ? it.tl + it.tkh : 0; };
+    codes.sort(function (a, b) {
+      return ((cat && cat[b] ? 1 : 0) - (cat && cat[a] ? 1 : 0)) || (qty(b) - qty(a)) || ((stock && stock[b] ? stock[b].total : 0) - (stock && stock[a] ? stock[a].total : 0));
+    });
     var sup = kb.suppliers || {};
     var supNames = Object.keys(sup);
-    var head = ["Item code", "Нэр", "TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"].concat(supNames);
-    var rows = found.map(function (it) {
-      return [it.code, it.mn || it.en, fmt(it.tl), fmt(it.tkh), fmt(it.total - it.tl - it.tkh)].concat(supNames.map(function (s) { return fmt(sup[s][it.code] || 0); }));
+    var name = function (k) { var it = stock && stock[k], c = cat && cat[k]; return (it && (it.mn || it.en)) || (c && (c.mn || c.en)) || ""; };
+    var head = ["Item code", "Нэр"].concat(cat ? ["Жагсаалт"] : []).concat(stock ? ["TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"] : ["Тайлбар"]).concat(supNames);
+    var rows = codes.map(function (k) {
+      var it = stock && stock[k], c = cat && cat[k];
+      return [k, name(k)].concat(cat ? [c ? "⭐" : ""] : [])
+        .concat(stock ? [fmt(it ? it.tl : 0), fmt(it ? it.tkh : 0), fmt(it ? it.total - it.tl - it.tkh : 0)] : [c ? c.desc : ""])
+        .concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); }));
     });
-    var res = { text: found.length === 1 ? "**" + (found[0].mn || found[0].en) + "** (" + found[0].code + ")" : "**" + found.length + "** сэлбэг олдлоо:", table: table(head, rows, 15) };
-    if (found.length === 1) {
-      var it = found[0];
-      res.detail = table(["Агуулах (тавиур)", "Тоо (" + it.uom + ")"], Object.keys(it.subs).sort().map(function (s) { return [s, fmt(it.subs[s])]; }), 30);
+    var inCat = cat ? codes.filter(function (k) { return cat[k]; }).length : 0;
+    var text = codes.length === 1 ? "**" + name(codes[0]) + "** (" + codes[0] + ")" : "**" + codes.length + "** сэлбэг олдлоо" + (cat ? ", үүнээс **" + inCat + "** нь жагсаалтад ⭐" : "") + ":";
+    if (!stock) text += "\nOracle-ийн үлдэгдлийн файл оруулбал агуулахын тоо харагдана.";
+    var res = { text: text, table: table(head, rows, 15) };
+    if (codes.length === 1) {
+      var one = stock && stock[codes[0]], c1 = cat && cat[codes[0]];
+      if (c1) res.text += "\n" + c1.desc + (c1.type ? " · " + c1.type : "") + (c1.group ? " · " + c1.group : "");
+      if (one) res.detail = table(["Агуулах (тавиур)", "Тоо (" + one.uom + ")"], Object.keys(one.subs).sort().map(function (s2) { return [s2, fmt(one.subs[s2])]; }), 30);
+      else if (stock) res.text += "\n⚠️ Энэ сэлбэг Oracle-ийн үлдэгдэлд алга (агуулахад 0).";
     }
     return res;
   }

@@ -154,7 +154,7 @@ table.report tr.light td { background: var(--light); color: #000; }
   <div id="tool-chat" hidden>
     <section class="panel">
       <h2>Файлууд</h2>
-      <div class="drop" id="c-drop">Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Бусад табад оруулсан файлыг автоматаар ашиглана.</small></div>
+      <div class="drop" id="c-drop">Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт эсвэл <b>сэлбэгийн жагсаалтын</b> (2025 item) файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Бусад табад оруулсан файлыг автоматаар ашиглана.</small></div>
       <input type="file" id="c-files" multiple accept=".xlsx,.xls" hidden>
       <div class="chips" id="c-sources"></div>
     </section>
@@ -405,6 +405,11 @@ table.report tr.light td { background: var(--light); color: #000; }
     var names = Object.keys(sources);
     $("c-sources").innerHTML = names.length ? names.map(function (k) { return '<span class="chip src">✓ ' + esc(k) + ": " + esc(sources[k]) + "</span>"; }).join("")
       : '<span class="sub" style="margin:0">Одоогоор файл алга.</span>';
+    if (kb.catalog) {
+      var forget = document.createElement("button"); forget.type = "button"; forget.className = "chip"; forget.textContent = "Жагсаалтыг мартах";
+      forget.onclick = function () { delete kb.catalog; delete sources["Сэлбэгийн жагсаалт"]; try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ } renderSources(); };
+      $("c-sources").appendChild(forget);
+    }
   }
   function feed(f, hint) {
     if (hint === "draft") return;
@@ -412,6 +417,10 @@ table.report tr.light td { background: var(--light); color: #000; }
       var r = AssistantCore.load(buf, f.name);
       if (r.kind === "stock") { kb.stock = r.data; sources["Oracle үлдэгдэл"] = f.name; }
       else if (r.kind === "requests") { kb.requests = r.data; sources["Засварын хүсэлт"] = f.name; }
+      else if (r.kind === "catalog") {
+        kb.catalog = r.data; sources["Сэлбэгийн жагсаалт"] = f.name;
+        try { localStorage.setItem("catalog", JSON.stringify({ name: f.name, data: r.data })); } catch (e) { /* too large or blocked: keep for this session only */ }
+      }
       else if (r.kind === "supplier") {
         var label = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(f.name) ? "Очлуур од" : /aode|аодэ/i.test(f.name) ? "AODE" : "Parts and oil";
         kb.suppliers[label] = r.data; sources[label] = f.name;
@@ -450,8 +459,12 @@ table.report tr.light td { background: var(--light); color: #000; }
     $("c-input").value = "";
   }
   $("c-form").onsubmit = function (e) { e.preventDefault(); ask($("c-input").value); };
+  try {
+    var saved = JSON.parse(localStorage.getItem("catalog") || "null");
+    if (saved && saved.data) { kb.catalog = saved.data; sources["Сэлбэгийн жагсаалт"] = saved.name + " (хадгалсан)"; }
+  } catch (e) { /* storage unavailable */ }
   renderSources();
-  bot({ text: "Сайн байна уу! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, засварын хүсэлтийг хайж өгнө. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
+  bot({ text: "Сайн байна уу! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, эдийн дугаар, засварын хүсэлтийг хайж өгнө. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
 
   if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore || !window.AssistantCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");
 })();
