@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Inline the libraries into one offline HTML file: tools/weekly/Weekly.html
+"""Inline the libraries into one offline HTML file: tools/Heregsel.html
 
-  python3 tools/weekly/build.py --jszip path/to/jszip.min.js --xlsx path/to/xlsx.full.min.js
+  python3 tools/build.py --jszip path/to/jszip.min.js --xlsx path/to/xlsx.full.min.js
 
 Libraries (npm): jszip@3.10.1, xlsx@0.18.5.
 """
@@ -25,12 +25,13 @@ def main():
     parts = {
         "/*JSZIP*/": Path(a.jszip).read_text(encoding="utf-8"),
         "/*XLSX*/": Path(a.xlsx).read_text(encoding="utf-8"),
-        "/*CORE*/": (HERE / "src" / "core.js").read_text(encoding="utf-8"),
+        "/*WEEKLY_CORE*/": (HERE / "src" / "weekly-core.js").read_text(encoding="utf-8"),
+        "/*ZASVAR_CORE*/": (HERE / "src" / "zasvar-core.js").read_text(encoding="utf-8"),
     }
     for marker, js in parts.items():
         assert html.count(marker) == 1, marker
         html = html.replace(marker, safe(js))
-    out = HERE / "Weekly.html"
+    out = HERE / "Heregsel.html"
     out.write_text(html, encoding="utf-8")
     print(f"{out} ({out.stat().st_size // 1024} KB)")
 

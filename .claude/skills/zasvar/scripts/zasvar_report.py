@@ -53,14 +53,21 @@ def to_dt(v):
 
 
 def read_requests(path):
-    ws = openpyxl.load_workbook(path, data_only=True).worksheets[0]
-    rows = list(ws.iter_rows(values_only=True))
-    for hi, r in enumerate(rows):
-        names = [norm(c) for c in r]
-        if "засварын төрөл" in names and "үйлчилгээ" in names:
+    # The data may be on any sheet (e.g. after a pivot sheet); use the first
+    # sheet that has the Mine2TL header row.
+    found = None
+    for ws in openpyxl.load_workbook(path, data_only=True).worksheets:
+        rows = list(ws.iter_rows(values_only=True))
+        for hi, r in enumerate(rows[:30]):
+            names = [norm(c) for c in r]
+            if "засварын төрөл" in names and "үйлчилгээ" in names and "засварын байршил" in names:
+                found = (ws.title, rows, hi, names)
+                break
+        if found:
             break
-    else:
-        sys.exit('Гарчгийн мөр олдсонгүй ("Засварын төрөл", "Үйлчилгээ")')
+    if not found:
+        sys.exit('Гарчгийн мөр олдсонгүй ("Засварын төрөл", "Засварын байршил", "Үйлчилгээ")')
+    _, rows, hi, names = found
 
     def find(pred, label):
         for i, n in enumerate(names):
@@ -154,7 +161,8 @@ def tree_table(ws, reqs, col_keys, col_of, title_cells, first_width=32):
                 l_sum.update(srv)
             write(r, loc, l_sum, 1)
             r += 1
-            for srv in sorted(tree[t][loc]):
+            # Blank services count in the location row but are not listed.
+            for srv in sorted(x for x in tree[t][loc] if x != BLANK):
                 write(r, srv, tree[t][loc][srv], 2)
                 r += 1
     g = Counter(col_of(q) for q in reqs)
@@ -228,23 +236,26 @@ def main():
     # Keep the original export as-is and put the report sheets in front of it.
     wb = openpyxl.load_workbook(a.input)
     src_names = wb.sheetnames
-    for name in ("Тайлан", "Pivot", "Хүлээлт"):
-        if name in src_names:
-            sys.exit(f'Эх файлд "{name}" нэртэй sheet аль хэдийн байна')
+
+    def free(name):
+        n, k = name, 2
+        while n in wb.sheetnames:
+            n, k = f"{name} ({k})", k + 1
+        return n
 
     days = sorted({q["req"].date() for q in reqs})
 
     # 1. Тайлан: presentation table (location > service by request day)
-    ws0 = wb.create_sheet("Тайлан", 0)
+    ws0 = wb.create_sheet(free("Тайлан"), 0)
     report_table(ws0, reqs, days)
 
     # 2. Pivot: same with Засварын төрөл as the top level
-    ws = wb.create_sheet("Pivot", 1)
+    ws = wb.create_sheet(free("Pivot"), 1)
     tree_table(ws, reqs, days, lambda q: q["req"].date(),
                ["Засварын төрөл / байршил / үйлчилгээ"] + [d.strftime("%d-%b") for d in days])
 
     # 3. Хүлээлт: columns = waiting buckets
-    ws2 = wb.create_sheet("Хүлээлт", 2)
+    ws2 = wb.create_sheet(free("Хүлээлт"), 2)
     labels = [b[0] for b in BUCKETS]
     bucket = lambda q: next(b[0] for b in BUCKETS if b[1] <= q["days"] <= b[2])
     last = tree_table(ws2, reqs, labels, bucket, [f"Өнөөдөр: {today:%Y-%m-%d}"] + labels)
