@@ -130,7 +130,12 @@
         fill: s0 == null ? null : fillRgb(src.st, s0) });
     }
     var g = function (row, k) { return row.v[I[k]]; };
-    var set = function (row, k, v) { row.v[I[k]] = v; };
+    var set = function (row, k, v, why) {
+      var old = row.v[I[k]];
+      if (old === v) return;
+      (row.changes || (row.changes = [])).push(H[I[k]] + ": " + (old == null || old === "" ? "(хоосон)" : old) + " → " + v + (why ? " (" + why + ")" : ""));
+      row.v[I[k]] = v;
+    };
 
     var warnings = [];
     rows.forEach(function (row) {
@@ -202,14 +207,14 @@
     if (report.mechanics_unknown.length) throw new Error("Байршил тодорхойгүй механик: " + report.mechanics_unknown.join(", "));
     var tu = opts.tu || {};
 
-    rows.forEach(function (row) { if (g(row, "засварын төрөл") === "Дуудлага") { set(row, "засварын байршил", mech[g(row, "механик")]); set(row, "үйлчилгээ", "Дуудлага"); } });
-    rows.forEach(function (row) { if (g(row, "засварын төрөл") === "Төлөвлөгөөт") { set(row, "дис тайлбар", g(row, "үйлчилгээ")); set(row, "үйлчилгээ", "Төлөвлөгөөт"); } });
-    rows.forEach(function (row) { if (empty(g(row, "жолооч/нэр, овог/"))) set(row, "үйлчилгээ", "Ачигч"); });
+    rows.forEach(function (row) { if (g(row, "засварын төрөл") === "Дуудлага") { set(row, "засварын байршил", mech[g(row, "механик")], "2. Дуудлага: механик " + g(row, "механик") + "-ийн байршил"); set(row, "үйлчилгээ", "Дуудлага", "2. Дуудлага"); } });
+    rows.forEach(function (row) { if (g(row, "засварын төрөл") === "Төлөвлөгөөт") { set(row, "дис тайлбар", g(row, "үйлчилгээ"), "4. Төлөвлөгөөт: үйлчилгээг Дис тайлбар руу"); set(row, "үйлчилгээ", "Төлөвлөгөөт", "4. Төлөвлөгөөт"); } });
+    rows.forEach(function (row) { if (empty(g(row, "жолооч/нэр, овог/"))) set(row, "үйлчилгээ", "Ачигч", "5. Жолооч хоосон"); });
     rows.forEach(function (row) {
       var t = tu[g(row, "техникийн №")];
-      if (t && g(row, "засварын төрөл") === "Төлөвлөгөөт" && empty(g(row, "дис тайлбар"))) set(row, "дис тайлбар", t);
+      if (t && g(row, "засварын төрөл") === "Төлөвлөгөөт" && empty(g(row, "дис тайлбар"))) set(row, "дис тайлбар", t, "5а. Мех тайлбараас, та баталсан");
     });
-    rows.forEach(function (row) { if (g(row, "засварын байршил") === "Замд") set(row, "засварын байршил", mech[g(row, "механик")]); });
+    rows.forEach(function (row) { if (g(row, "засварын байршил") === "Замд") set(row, "засварын байршил", mech[g(row, "механик")], "6. Замд: механик " + g(row, "механик") + "-ийн байршил"); });
 
     // step 7
     var services = {}, locs = {}, problems = [];
@@ -261,6 +266,22 @@
     report.end = serialText(end); report.blue = blue.length; report.gray = gray.length;
     report.services = services; report.locations = locs; report.warnings = warnings;
     report.fileName = "ZM_" + serialText(end).slice(8, 10) + ".xlsx";
+    // explanation: one line per output row, and the formulas used
+    report.explain = {
+      headers: H, mech: mech, end: serialText(end),
+      rows: ordered.map(function (r, i) {
+        return { row: i + 2, tech: g(r, "техникийн №"), color: r.blue ? (r.red ? "улаан → цэнхэр" : "цэнхэр") : "саарал",
+          changes: (r.changes || []).join("; ") || "өөрчлөгдөөгүй",
+          calc: Object.keys(r.calc).map(function (k) {
+            var f = r.calc[k][0], v = Math.round(r.calc[k][1] * 100) / 100;
+            return H[I[k]] + ": " + (f ? f.slice(1).replace(/Table1\[\[#This Row\],(\[[^\]]+\])\]/g, "$1") + " = " + v : "тоон утга " + v);
+          }).join("; ") };
+      }),
+      formulas: {
+        blue: Object.keys(blue[0] ? blue[0].calc : {}).map(function (k) { return [H[I[k]], blue[0].calc[k][0] || "тоон утга"]; }),
+        gray: Object.keys(gray[0] ? gray[0].calc : {}).map(function (k) { return [H[I[k]], gray[0].calc[k][0] || "тоон утга"]; })
+      }
+    };
     return { bytes: bytes, report: report };
   }
 

@@ -267,7 +267,7 @@
     return {
       bytes: bytes, reqs: reqs, days: days, today: today, skipped: read.skipped, table: rep.table,
       sheetNames: sheets.map(function (s) { return s.finalName; }),
-      waiting: counter(reqs, bucketOf)
+      waiting: counter(reqs, bucketOf), bucketOf: bucketOf
     };
   }
 

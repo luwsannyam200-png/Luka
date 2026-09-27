@@ -59,18 +59,19 @@
     var wb = XLSX.read(buf, { type: "array" });
     var books = wb.SheetNames.map(function (n) { return XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }); });
     var found = null, summary = null;
-    books.forEach(function (rows) {
+    books.forEach(function (rows, si) {
       for (var i = 0; i < Math.min(rows.length, 30) && !found; i++) {
         var names = rows[i].map(norm);
         if (names.indexOf("item code") < 0) continue;
         if (names.indexOf("subinventory") >= 0 && names.indexOf("quantity") >= 0) {
-          found = { rows: rows, start: i + 1, ix: { code: names.indexOf("item code"), sub: names.indexOf("subinventory"), q: names.indexOf("quantity") } };
+          found = { sheet: wb.SheetNames[si], rows: rows, start: i + 1, ix: { code: names.indexOf("item code"), sub: names.indexOf("subinventory"), q: names.indexOf("quantity") } };
         } else if (!summary && names.indexOf("tl") >= 0 && names.indexOf("tkh") >= 0) {
-          summary = { rows: rows, start: i + 1, ix: { code: names.indexOf("item code"), tl: names.indexOf("tl"), tkh: names.indexOf("tkh") } };
+          summary = { sheet: wb.SheetNames[si], rows: rows, start: i + 1, ix: { code: names.indexOf("item code"), tl: names.indexOf("tl"), tkh: names.indexOf("tkh") } };
         }
       }
     });
-    var tl = {}, tkh = {}, n = 0, j, r, code;
+    var tl = {}, tkh = {}, n = 0, j, r, code, bySub = {};   // bySub: code -> {warehouse: qty}, for the explanation
+    var note = function (code, sub, q) { var b = bySub[code] || (bySub[code] = {}); b[sub] = (b[sub] || 0) + q; };
     if (found) {
       for (j = found.start; j < found.rows.length; j++) {
         r = found.rows[j]; code = r[found.ix.code]; var q = r[found.ix.q];
@@ -78,10 +79,10 @@
         code = String(code).trim();
         var sub = String(r[found.ix.sub] || "").trim().toUpperCase();
         var w = whLoc(sub);
-        if (w === "TKH") { tkh[code] = (tkh[code] || 0) + q; n++; }
-        else if (w === "TL") { tl[code] = (tl[code] || 0) + q; n++; }
+        if (w === "TKH") { tkh[code] = (tkh[code] || 0) + q; n++; note(code, sub, q); }
+        else if (w === "TL") { tl[code] = (tl[code] || 0) + q; n++; note(code, sub, q); }
       }
-      return { tl: tl, tkh: tkh, rows: n, source: "detail" };
+      return { tl: tl, tkh: tkh, rows: n, source: "detail", sheet: found.sheet, bySub: bySub };
     }
     if (summary) {
       for (j = summary.start; j < summary.rows.length; j++) {
@@ -89,11 +90,11 @@
         if (code == null || /total|нийт|дүн/i.test(String(code)) || !String(code).trim()) continue; // skip totals
         code = String(code).trim();
         var a = r[summary.ix.tl], b = r[summary.ix.tkh];
-        if (typeof a === "number") tl[code] = (tl[code] || 0) + a;
-        if (typeof b === "number") tkh[code] = (tkh[code] || 0) + b;
+        if (typeof a === "number") { tl[code] = (tl[code] || 0) + a; note(code, "TL", a); }
+        if (typeof b === "number") { tkh[code] = (tkh[code] || 0) + b; note(code, "TKH", b); }
         n++;
       }
-      return { tl: tl, tkh: tkh, rows: n, source: "summary" };
+      return { tl: tl, tkh: tkh, rows: n, source: "summary", sheet: summary.sheet, bySub: bySub };
     }
     throw new Error("Oracle үлдэгдлийн файлд Item Code / Subinventory / Quantity (эсвэл Item Code / TL / TKH) гарчиг олдсонгүй");
   }
@@ -268,7 +269,8 @@
     return {
       bytes: bytes, template: tpl.name, date: opts.date, rows: report, stockRows: stock.rows,
       suppliersFilled: SUPPLIERS.filter(function (l) { return supplier[l]; }),
-      suppliersBlank: SUPPLIERS.filter(function (l) { return !supplier[l]; })
+      suppliersBlank: SUPPLIERS.filter(function (l) { return !supplier[l]; }),
+      explain: { cols: C, supCols: SUPCOL, lastSup: lastSup, firstRow: firstRow, stockSource: stock.source, stockSheet: stock.sheet, bySub: stock.bySub }
     };
   }
 

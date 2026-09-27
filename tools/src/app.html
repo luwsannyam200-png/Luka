@@ -246,6 +246,22 @@ input.wide { width: 170px; }
     var a = document.createElement("a"); a.href = url; a.download = name; a.click();
     setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
   }
+  /* "📖 Тайлбар": a separate small workbook that says where every number came from.
+     The main file is never changed by it. */
+  function explainButton(box, fileName, sheets) {
+    var b = document.createElement("button"); b.className = "btn"; b.style.marginLeft = "8px"; b.textContent = "📖 Тайлбар";
+    b.title = "Томьёо, аль файлын аль агуулахаас авсныг тусдаа Excel-ээр татна";
+    b.onclick = function () {
+      var wb = XLSX.utils.book_new();
+      sheets.forEach(function (sh) {
+        var ws = XLSX.utils.aoa_to_sheet(sh.rows);
+        ws["!cols"] = (sh.widths || []).map(function (w) { return { wch: w }; });
+        XLSX.utils.book_append_sheet(wb, ws, sh.name);
+      });
+      XLSX.writeFile(wb, fileName);
+    };
+    box.appendChild(b);
+  }
   function tick() { return new Promise(function (r) { setTimeout(r, 30); }); }
   function wireDrop(dropId, inputId, onFiles) {
     var drop = $(dropId);
@@ -355,6 +371,7 @@ input.wide { width: 170px; }
       btn.textContent = "Татаж авах";
       btn.onclick = function () { download(res.bytes, "Weekly draft_" + date + ".xlsx"); };
       ok.appendChild(btn);
+      explainButton(ok, "Weekly_tailbar_" + date + ".xlsx", weeklyExplain(res, date));
       var notes = [];
       if (res.suppliersBlank.length) notes.push("<b>" + res.suppliersBlank.map(esc).join(", ") + "</b> файл оруулаагүй тул тэр багана хоосон, шар өнгөтэй. <b>Нийт агуулах / All warehouse</b> дутуу тоо харуулна.");
       notes.push("<b>Захиалгын хэмжээ, РО дугаар, Орлогод аваагүй</b> багана өмнөх sheet-ээс хуулагдсан. Эдгээрийг шинэчилнэ үү.");
@@ -368,6 +385,42 @@ input.wide { width: 170px; }
       $("w-go").disabled = !(files.draft && files.stock);
     }
   };
+  function weeklyExplain(res, date) {
+    var X = res.explain, C = X.cols, r0 = X.firstRow, SUP = WeeklyCore.SUPPLIERS;
+    var src = function (k) { return files[k] ? files[k].name : "оруулаагүй"; };
+    var rules = [
+      ["Weekly тайлбар", "Шинэ sheet: " + date + ", загвар: " + res.template],
+      [],
+      ["Эх файл", "Нэр"],
+      ["Weekly draft", src("draft")],
+      ["Oracle үлдэгдэл", src("stock") + ", sheet \"" + X.stockSheet + "\" (" + (X.stockSource === "detail" ? "Oracle-ийн эх тайлан" : "TL / TKH хураангуй") + ")"]
+    ].concat(SUP.map(function (l) { return [l, src(l)]; })).concat([
+      [],
+      ["Багана", "Хаанаас / томьёо (жишээ нь " + r0 + "-р мөр)"],
+      ["Item code, Сэлбэгийн мэдээлэл, ЗБН", "Загвар sheet \"" + res.template + "\"-ээс хуулсан, өөрчлөөгүй"],
+      ["УХ (" + C.ux + ")", "Oracle үлдэгдлийн Quantity-ийн нийлбэр, Item code-оор. Агуулах (Subinventory) нь TL-ээр эхэлсэн (TL_ZONE_A, TL_LD…) эсвэл кирилл \"ТЛ…\""],
+      ["ЦХ (" + C.cx + ")", "Мөн адил, агуулах нь TKH-ээр эхэлсэн (TKH_ZONE_C, TKH_LD…) эсвэл \"…_TKH…\" (TG_TKH-Sub)"],
+      ["Бусад агуулах", "ZONE_A, MINING Zas, АБМ гэх мэт. Тооцоонд ОРОХГҮЙ"]
+    ]).concat(SUP.map(function (l) {
+      return [l + " (" + X.supCols[l] + ")", files[l] ? "Нийлүүлэгчийн файлын 13 оронтой кодтой мөрийн хамгийн сүүлийн тоо" : "Файл оруулаагүй тул хоосон, шар өнгөтэй"];
+    })).concat([
+      ["TL Warehouse (" + C.tlw + ")", "=SUM(" + C.ux + r0 + ":" + C.cx + r0 + ")/" + C.zbn + r0 + "   (УХ + ЦХ) / ЗБН"],
+      ["Нийт агуулах (" + C.total + ")", "=SUM(" + C.ux + r0 + ":" + X.lastSup + r0 + ")   УХ + ЦХ + нийлүүлэгчид"],
+      ["All warehouse (" + C.all + ")", "=" + C.total + r0 + "/" + C.zbn + r0 + "   Нийт агуулах / ЗБН"],
+      ["Захиалгын хэмжээ, РО, Орлогод аваагүй", "Өмнөх sheet-ээс хуулсан. Та өөрөө шинэчилнэ"]
+    ]);
+    var fmtSubs = function (code, want) {
+      var b = X.bySub[code] || {};
+      return Object.keys(b).filter(function (k) { return want(k); }).sort().map(function (k) { return k + ": " + b[k]; }).join("; ");
+    };
+    var isTkh = function (k) { return /(^|[_\s-])TKH/i.test(k); };
+    var head = ["Мөр", "Item code", "Сэлбэг", "ЗБН", "УХ", "УХ: аль агуулахаас", "ЦХ", "ЦХ: аль агуулахаас"].concat(SUP).concat(["Нийт агуулах", "All warehouse"]);
+    var rows = res.rows.map(function (r) {
+      return [r.row, r.code, r.name, r.zbn, r["УХ"], fmtSubs(r.code, function (k) { return !isTkh(k); }) || "Oracle-д алга", r["ЦХ"], fmtSubs(r.code, isTkh) || "Oracle-д алга"]
+        .concat(SUP.map(function (l) { return r[l] == null ? "файлгүй" : r[l]; })).concat([r.total, Math.round(r.all * 1000) / 1000]);
+    });
+    return [{ name: "Тайлбар", rows: rules, widths: [34, 110] }, { name: "Сэлбэг тус бүр", rows: [head].concat(rows), widths: [6, 16, 40, 8, 8, 40, 8, 40, 12, 12, 12, 12, 12] }];
+  }
   function renderWeeklyTable(res) {
     var cols = ["УХ", "ЦХ"].concat(WeeklyCore.SUPPLIERS);
     var h = '<thead><tr><th class="name">Сэлбэг</th><th>Код</th><th>ЗБН</th>' +
@@ -421,6 +474,21 @@ input.wide { width: 170px; }
       btn.textContent = "Татаж авах";
       btn.onclick = function () { download(res.bytes, "Zasvaryn_huselt_" + mmdd + ".xlsx"); };
       ok.appendChild(btn);
+      explainButton(ok, "Zasvaryn_huselt_tailbar_" + mmdd + ".xlsx", [
+        { name: "Тайлбар", widths: [26, 110], rows: [
+          ["Засварын хүсэлтийн тайлбар", "Эх файл: " + zfile.name],
+          ["Хүлээлтийг тоолсон өдөр", res.today + (today ? " (та өгсөн)" : " (файлын хамгийн сүүлийн хүсэлтийн өдөр)")],
+          [],
+          ["Sheet", "Хэрхэн бодсон"],
+          ["Тайлан", "Мөр: Засварын байршил → Үйлчилгээ. Багана: Хүсэлт гаргасан өдөр. Нүд: тухайн байршил, үйлчилгээ, өдрийн хүсэлтийн тоо. Хоосон үйлчилгээг харуулаагүй"],
+          ["Pivot", "Засварын төрөл / байршил / үйлчилгээ / хоногоор бүлэглэсэн тоо"],
+          ["Хүлээлт", "Хоног = " + res.today + " − Хүсэлт гаргасан өдөр. Бүлэг: Өнөөдөр (0), 1–3, 4–7, 8+ хоног"],
+          ["Эх sheet", "Өөрчлөөгүй, хэвээр"],
+          ["Алгассан мөр", res.skipped ? res.skipped + " (нийт дүнгийн эсвэл огноогүй мөр)" : "алга"]
+        ] },
+        { name: "Хүсэлт тус бүр", widths: [14, 16, 16, 16, 12, 8, 12], rows: [["Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлтийн өдөр", "Хоног", "Бүлэг"]]
+          .concat(res.reqs.map(function (q) { return [q.tech, q.type, q.loc, q.srv, q.day, q.days, res.bucketOf(q)]; })) }
+      ]);
       if (res.skipped) show("z-result", "warn", res.skipped + " мөрийг алгассан (нийт дүнгийн мөр эсвэл огноогүй мөр).", true);
       renderZasvar(res);
     } catch (e) {
@@ -515,6 +583,7 @@ input.wide { width: 170px; }
       var btn = document.createElement("button"); btn.className = "btn primary"; btn.style.marginLeft = "10px"; btn.textContent = "Татаж авах";
       btn.onclick = function () { download(res.bytes, name); };
       ok.appendChild(btn);
+      explainButton(ok, name.replace(/\.xlsx$/i, "") + "_tailbar.xlsx", medeeExplain(r));
       if (r.warnings.length) show("m-result", "warn", "<b>Анхаарах:</b><ul class='notes'>" + r.warnings.map(function (w) { return "<li>" + esc(w) + "</li>"; }).join("") + "</ul>", true);
       var stat = function (label, n) { return '<div class="stat"><b>' + n + "</b><span>" + esc(label) + "</span></div>"; };
       $("m-stats").innerHTML = stat("Нийт мөр", r.rows) + stat("Цэнхэр", r.blue) + stat("Саарал", r.gray) +
@@ -526,6 +595,39 @@ input.wide { width: 170px; }
       show("m-result", "bad", "<b>Алдаа:</b> " + (e.problems ? "<ul class='notes'>" + e.problems.map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ul>" : esc(e && e.message ? e.message : e)));
     } finally { $("m-status").textContent = ""; $("m-go").disabled = false; }
   };
+
+  function medeeExplain(r) {
+    var X = r.explain;
+    var rules = [
+      ["Засварын мэдээний тайлбар", "Эх файл: " + mfile.name],
+      ["Дуусаагүй засварын дуусах цаг", X.end],
+      [],
+      ["Алхам", "Юу хийсэн"],
+      ["1", "\"Хэсгийн №\" баганыг устгасан"],
+      ["2", "Засварын төрөл = Дуудлага: Байршил → механикийн байршил, Үйлчилгээ → Дуудлага"],
+      ["3", "Доод талын нийт дүнгийн мөрийг устгасан"],
+      ["4", "Төлөвлөгөөт: Үйлчилгээний утгыг Дис тайлбар руу зөөж, Үйлчилгээ → Төлөвлөгөөт"],
+      ["5", "Жолооч хоосон: Үйлчилгээ → Ачигч"],
+      ["5а", "Төлөвлөгөөт + Ачигч + Дис тайлбар хоосон: зөвхөн таны баталсан ТҮ-г бичсэн"],
+      ["6", "Байршил = Замд: механикийн байршлаар сольсон"],
+      ["7", "Шалгалт: Ачигч / Дуудлага / Төлөвлөгөөт байгаа, үйлчилгээ хоосон мөргүй, байршил зөвхөн УХ / ЦХ"],
+      ["8", "Улааныг цэнхэр гэж тооцсон. Цэнхэр мөрүүд эхэнд. Дуусах цаг = " + X.end],
+      [],
+      ["Цэнхэр (дуусаагүй) мөр", "Томьёо / утга"]
+    ].concat(X.formulas.blue.map(function (f) { return f; })).concat([
+      ["", "Зарцуулсан цаг, Засварын код = (Эхэлсэн − Хүсэлт өгсөн) × 24 (хүлээсэн цаг). Дууссан огноо = (Дуусах цаг − Эхэлсэн) × 24 (зарцуулсан цаг)"],
+      ["", "Механик, Хүлээсэн цаг баганад таны аргын завсрын томьёо үлдсэн. Хүлээсэн цаг нь утгагүй том (сөрөг) тоо гардаг, цаашид ашиглахгүй"],
+      [],
+      ["Саарал (дууссан) мөр", "Томьёо"]
+    ]).concat(X.formulas.gray).concat([
+      [],
+      ["Механик", "Байршил"]
+    ]).concat(Object.keys(X.mech).sort().map(function (m) { return [m, X.mech[m]]; }));
+    return [
+      { name: "Тайлбар", rows: rules, widths: [30, 110] },
+      { name: "Мөр тус бүр", widths: [6, 14, 16, 90, 110], rows: [["Мөр", "Техникийн №", "Өнгө", "Өөрчлөлт", "Тооцоо"]].concat(X.rows.map(function (x) { return [x.row, x.tech, x.color, x.changes, x.calc]; })) }
+    ];
+  }
 
   /* ================= ASSISTANT ================= */
   var kb = { suppliers: {} }, sources = {};
