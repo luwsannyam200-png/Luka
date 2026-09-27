@@ -438,10 +438,24 @@ table.report tr.light td { background: var(--light); color: #000; }
   }
   function say(cls, html) {
     var el = document.createElement("div"); el.className = "bubble " + cls; el.innerHTML = html;
-    $("c-log").appendChild(el); $("c-log").scrollTop = $("c-log").scrollHeight;
+    $("c-log").appendChild(el);
+    // show the start of a long answer, not its end
+    $("c-log").scrollTop = cls === "bot" ? Math.max(0, el.offsetTop - $("c-log").offsetTop - 60) : $("c-log").scrollHeight;
   }
   function bot(a) {
-    say("bot", md(a.text) + tableHtml(a.table) + (a.detail ? '<div class="sub" style="margin:8px 0 0">Агуулах, тавиураар:</div>' + tableHtml(a.detail) : ""));
+    say("bot", md(a.text).replace(/\n/g, "<br>") + tableHtml(a.table) + (a.detail ? '<div class="sub" style="margin:8px 0 0">' + esc(a.detailTitle || "Агуулах, тавиураар:") + "</div>" + tableHtml(a.detail) : ""));
+    if (a.exportName && a.table && a.table.all) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.style.marginTop = "8px"; b.textContent = "⬇ Excel болгож татах";
+      b.onclick = function () {
+        // "1,606" style display numbers back to real numbers (13-digit codes stay text)
+        var num = function (rows) { return rows.map(function (r) { return r.map(function (c) { return typeof c === "string" && /^-?\d{1,3}(,\d{3})*(\.\d+)?$/.test(c) ? parseFloat(c.replace(/,/g, "")) : c; }); }); };
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([a.table.head].concat(num(a.table.all))), "Хайлт");
+        if (a.detail) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([a.detail.head].concat(num(a.detail.all))), "Сэлбэгээр");
+        XLSX.writeFile(wb, "hailt_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+      };
+      $("c-log").lastChild.appendChild(b);
+    }
     if (a.examples) setExamples(a.examples);
   }
   function setExamples(list) {

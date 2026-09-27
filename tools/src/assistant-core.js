@@ -101,8 +101,9 @@
   }
   function loadStock(h) {
     var c = { code: col(h, "item code"), en: col(h, "item description"), mn: col(h, "item mongolian description"),
-      sub: col(h, "subinventory"), loc: col(h, "locator"), q: col(h, "quantity"), uom: col(h, "uom") };
-    var items = {};
+      sub: col(h, "subinventory"), loc: col(h, "locator"), q: col(h, "quantity"), uom: col(h, "uom"),
+      supplier: col(h, "supplier"), date: col(h, "origination date") };
+    var items = {}, raw = [];
     h.rows.slice(h.hi + 1).forEach(function (r) {
       var code = r[c.code], q = r[c.q];
       if (code == null || typeof q !== "number") return;
@@ -112,7 +113,10 @@
       var key = sub + (r[c.loc] ? " (" + r[c.loc] + ")" : "");
       it.subs[key] = (it.subs[key] || 0) + q;
       it.total += q;
+      raw.push({ code: code, en: String(r[c.en] || ""), mn: String(r[c.mn] || ""), uom: r[c.uom] || "", sub: sub, loc: r[c.loc] || "",
+        qty: q, supplier: c.supplier >= 0 ? r[c.supplier] || "" : "", date: c.date >= 0 ? dayKey(r[c.date]) || "" : "" });
     });
+    Object.defineProperty(items, "_rows", { value: raw, enumerable: false });
     Object.keys(items).forEach(function (k) {
       var it = items[k];
       it.tl = 0; it.tkh = 0;
@@ -158,7 +162,7 @@
   /* ---------- answering ---------- */
   function table(head, rows, limit) {
     limit = limit || 20;
-    return { head: head, rows: rows.slice(0, limit), more: Math.max(0, rows.length - limit) };
+    return { head: head, rows: rows.slice(0, limit), more: Math.max(0, rows.length - limit), all: rows };
   }
   function need(kind) {
     var what = { stock: "Oracle-ийн үлдэгдлийн тайлан (жишээ нь 09-26 үлдэгдэл.xlsx)", requests: "Mine2TL-ийн засварын хүсэлтийн файл" }[kind];
@@ -166,7 +170,7 @@
   }
   var HELP = {
     text: "Би оруулсан файлуудаас хайж хариулна. Жишээ асуултууд:",
-    examples: ["маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "гэрээт сэлбэгээс нийлүүлэгчид байхгүй"]
+    examples: ["агаар шүүгч", "маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "гэрээт сэлбэгээс нийлүүлэгчид байхгүй"]
   };
 
   function answer(question, kb) {
@@ -262,6 +266,12 @@
     }
 
     var code = /\b\d{13}\b/.exec(question);
+    var fuzzyNote = "";
+    if (!code) {
+      var ph = phraseAnswer(question, kb);
+      if (ph) return ph;
+      fuzzyNote = "Яг таарах илэрц олдсонгүй. Ойролцоо илэрц: ";
+    }
     var codes;
     if (code) {
       codes = (stock && stock[code[0]]) || (cat && cat[code[0]]) ? [code[0]] : [];
@@ -291,7 +301,7 @@
         .concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); }));
     });
     var inCat = cat ? codes.filter(function (k) { return cat[k]; }).length : 0;
-    var text = codes.length === 1 ? "**" + name(codes[0]) + "** (" + codes[0] + ")" : "**" + codes.length + "** сэлбэг олдлоо" + (cat ? ", үүнээс **" + inCat + "** нь гэрээт ⭐" : "") + ":";
+    var text = fuzzyNote + (codes.length === 1 ? "**" + name(codes[0]) + "** (" + codes[0] + ")" : "**" + codes.length + "** сэлбэг олдлоо" + (cat ? ", үүнээс **" + inCat + "** нь гэрээт ⭐" : "") + ":");
     if (!stock) text += "\nOracle-ийн үлдэгдлийн файл оруулбал агуулахын тоо харагдана.";
     var res = { text: text, table: table(head, rows, 15) };
     if (codes.length === 1) {
@@ -302,6 +312,48 @@
       else if (stock && !c1) res.text += "\n⚠️ Энэ сэлбэг Oracle-ийн үлдэгдэлд алга (агуулахад 0).";
     }
     return res;
+  }
+  /* Excel filter "contains": the phrase as typed (case-insensitive), row by row. */
+  function lowerText(t) { return String(t == null ? "" : t).toLowerCase().replace(/\s+/g, " "); }
+  function phraseOf(question) {
+    var stop = STOP.map(fold);
+    return lowerText(question).replace(/[?!]/g, " ").split(" ").filter(function (w) { return w && stop.indexOf(fold(w.replace(/[.,]$/, ""))) < 0; }).join(" ").replace(/[.,]$/, "");
+  }
+  function phraseAnswer(question, kb) {
+    var phrase = phraseOf(question), stock = kb.stock, cat = kb.catalog;
+    if (phrase.length < 2) return null;
+    var rows = stock ? stock._rows.filter(function (r) { return lowerText(r.en).indexOf(phrase) >= 0 || lowerText(r.mn).indexOf(phrase) >= 0; }) : [];
+    var catHits = cat ? Object.keys(cat).filter(function (k) { return lowerText(cat[k].desc).indexOf(phrase) >= 0; }) : [];
+    if (!rows.length && !catHits.length) return null;
+    var sup = kb.suppliers || {}, supNames = Object.keys(sup);
+    if (!stock) {
+      return {
+        text: "**\"" + phrase + "\"** гэсэн сэлбэг гэрээт жагсаалтад **" + catHits.length + "** байна.\nOracle-ийн үлдэгдлийн файл оруулбал агуулахын мөрүүд харагдана.",
+        table: table(["Item дугаар", "Сэлбэгийн нэр"].concat(supNames), catHits.map(function (k) { return [k, cat[k].desc].concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); })); }), 500),
+        exportName: phrase
+      };
+    }
+    var codes = uniq(rows.map(function (r) { return r.code; }));
+    var tl = 0, tkh = 0;
+    rows.forEach(function (r) { var u = r.sub.toUpperCase(); if (u.indexOf("TKH") === 0) tkh += r.qty; else if (u.indexOf("TL") === 0) tl += r.qty; });
+    var head = ["Item Code", "Item Mongolian Description", "UOM", "Subinventory", "Locator", "Quantity", "Supplier", "Origination date"].concat(cat ? ["Гэрээт"] : []);
+    var list = rows.map(function (r) {
+      return [r.code, r.mn || r.en, r.uom, r.sub, r.loc, r.qty, r.supplier, r.date].concat(cat ? [cat[r.code] ? "⭐" : ""] : []);
+    });
+    var perItem = codes.map(function (k) {
+      var it = stock[k];
+      return [k, it.mn || it.en].concat(cat ? [cat[k] ? "⭐" : ""] : []).concat([fmt(it.tl), fmt(it.tkh), fmt(it.total - it.tl - it.tkh)])
+        .concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); }));
+    }).sort(function (a, b) { return parseFloat(String(b[cat ? 3 : 2]).replace(/,/g, "")) + parseFloat(String(b[cat ? 4 : 3]).replace(/,/g, "")) - parseFloat(String(a[cat ? 3 : 2]).replace(/,/g, "")) - parseFloat(String(a[cat ? 4 : 3]).replace(/,/g, "")); });
+    var extra = cat ? catHits.filter(function (k) { return !stock[k]; }) : [];
+    return {
+      text: "**\"" + phrase + "\"**: Oracle-ийн үлдэгдэлд **" + rows.length + " мөр** (" + codes.length + " сэлбэг). TL нийт **" + fmt(tl) + "**, TKH нийт **" + fmt(tkh) + "**." +
+        (cat ? "\nГэрээт жагсаалтад **" + catHits.length + "**" + (extra.length ? ", үүнээс " + extra.length + " нь Oracle-ийн үлдэгдэлд алга." : ".") : ""),
+      table: table(head, list, 500),
+      detailTitle: "Сэлбэг тус бүрээр:",
+      detail: table(["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(["TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"]).concat(supNames), perItem, 200),
+      exportName: phrase
+    };
   }
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
   function notUnderstood(kb) {
