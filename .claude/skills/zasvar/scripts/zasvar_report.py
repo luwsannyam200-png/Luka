@@ -2,6 +2,7 @@
 """Repair request report from the Mine2TL export ("засвар ...rqst.xlsx").
 
 Output workbook:
+  Тайлан    rows Засварын байршил > Үйлчилгээ, columns = request day (report layout)
   Pivot     rows Засварын төрөл > Засварын байршил > Үйлчилгээ, columns = request day, values = count
   Хүлээлт   same rows, columns = days waiting (0, 1-3, 4-7, 8+)
   Анхаарах  urgent requests, long waits, ERP WO numbers, data errors
@@ -166,6 +167,51 @@ def tree_table(ws, reqs, col_keys, col_of, title_cells, first_width=32):
     return r
 
 
+NAVY = PatternFill("solid", fgColor="1F3864")
+BLUE = PatternFill("solid", fgColor="2F5597")
+LIGHT = PatternFill("solid", fgColor="8EA9DB")
+GRID = Border(*(Side(style="thin", color="1F3864"),) * 4)
+
+
+def report_table(ws, reqs, days, top=4, left=3):
+    """Presentation table: location (dark) > service (light) rows, request-day
+    columns, "Хүсэлт" total column and "Нийт хүсэлт" row. Blank services are
+    counted in the location row but not listed."""
+    cnt = defaultdict(lambda: defaultdict(Counter))
+    for q in reqs:
+        cnt[q["loc"]][q["srv"]][q["req"].date()] += 1
+    ncol = len(days) + 2
+
+    def put(r, label, counter, fill, white):
+        vals = [label] + [counter.get(d, 0) or None for d in days] + [sum(counter.values())]
+        for i, v in enumerate(vals):
+            c = ws.cell(r, left + i, v)
+            c.fill = fill
+            c.border = GRID
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.font = Font(bold=white, color="FFFFFF" if white else "000000")
+
+    put(top, "Засварын төрөл", {}, NAVY, True)
+    for i, d in enumerate(days, 1):
+        ws.cell(top, left + i, d.strftime("%d-%b"))
+    ws.cell(top, left + ncol - 1, "Хүсэлт")
+    r = top + 1
+    for loc in sorted(cnt):
+        total = Counter()
+        for s in cnt[loc].values():
+            total.update(s)
+        put(r, loc, total, BLUE, True)
+        r += 1
+        for srv in sorted(s for s in cnt[loc] if s != BLANK):
+            put(r, srv, cnt[loc][srv], LIGHT, False)
+            r += 1
+    put(r, "Нийт хүсэлт", Counter(q["req"].date() for q in reqs), NAVY, True)
+    ws.column_dimensions[get_column_letter(left)].width = 20
+    for i in range(1, ncol):
+        ws.column_dimensions[get_column_letter(left + i)].width = 10
+    return r
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
@@ -182,14 +228,19 @@ def main():
 
     wb = openpyxl.Workbook()
 
-    # 1. Pivot: columns = request day
-    ws = wb.active
-    ws.title = "Pivot"
     days = sorted({q["req"].date() for q in reqs})
+
+    # 1. Тайлан: presentation table (location > service by request day)
+    ws0 = wb.active
+    ws0.title = "Тайлан"
+    report_table(ws0, reqs, days)
+
+    # 2. Pivot: same with Засварын төрөл as the top level
+    ws = wb.create_sheet("Pivot")
     tree_table(ws, reqs, days, lambda q: q["req"].date(),
                ["Засварын төрөл / байршил / үйлчилгээ"] + [d.strftime("%d-%b") for d in days])
 
-    # 2. Хүлээлт: columns = waiting buckets
+    # 3. Хүлээлт: columns = waiting buckets
     ws2 = wb.create_sheet("Хүлээлт")
     labels = [b[0] for b in BUCKETS]
     bucket = lambda q: next(b[0] for b in BUCKETS if b[1] <= q["days"] <= b[2])
@@ -199,7 +250,7 @@ def main():
         if c.value:
             c.fill = RED
 
-    # 3. Анхаарах
+    # 4. Анхаарах
     ws3 = wb.create_sheet("Анхаарах")
     cols = ["Ангилал", "Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлт гаргасан", "Хоног", "Тайлбар"]
     header(ws3, 1, cols, [26, 13, 16, 13, 13, 17, 7, 90])
