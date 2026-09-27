@@ -82,6 +82,12 @@ table.report tr.light td { background: var(--light); color: #000; }
 .bubble td, .bubble th { white-space: normal; text-align: left; }
 .ask { display: flex; gap: 8px; margin-top: 8px; }
 .ask input { flex: 1; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
+.kb { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+.kb summary { cursor: pointer; font-weight: 600; }
+.kb .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.kb .row input { flex: 1 1 180px; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); min-width: 0; }
+.kb td, .kb th { text-align: left; white-space: normal; }
+.kb td.act { white-space: nowrap; width: 1%; }
 [hidden] { display: none !important; }
 @media (max-width: 640px) { .slot { grid-template-columns: 1fr auto; } .slot .file { grid-column: 1 / -1; } .tabs { grid-template-columns: 1fr; } }
 </style>
@@ -154,7 +160,7 @@ table.report tr.light td { background: var(--light); color: #000; }
   <div id="tool-chat" hidden>
     <section class="panel">
       <h2>Файлууд</h2>
-      <div class="drop" id="c-drop">Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт эсвэл <b>гэрээт сэлбэгийн жагсаалтын</b> (2025 item) файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Бусад табад оруулсан файлыг автоматаар ашиглана.</small></div>
+      <div class="drop" id="c-drop">Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт эсвэл <b>гэрээт сэлбэгийн жагсаалтын</b> (2025 item) файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Бусад табад оруулсан файлыг автоматаар ашиглана. Нэг оруулсан файлыг дараа нээхэд дахин оруулах шаардлагагүй, энэ компьютерт хадгалагдана.</small></div>
       <input type="file" id="c-files" multiple accept=".xlsx,.xls" hidden>
       <div class="chips" id="c-sources"></div>
     </section>
@@ -163,6 +169,15 @@ table.report tr.light td { background: var(--light); color: #000; }
       <div class="chat" id="c-log" aria-live="polite"></div>
       <div class="chips" id="c-examples"></div>
       <form class="ask" id="c-form"><input id="c-input" autocomplete="off" placeholder="Жишээ нь: маслын шүүр хэд байна"><button class="btn primary" type="submit">Асуух</button></form>
+      <details class="kb" id="k-box">
+        <summary>📚 Миний мэдлэгийн сан (<span id="k-count">0</span>)</summary>
+        <p class="sub" style="margin:6px 0">Зөвхөн энэ компьютерийн энэ хөтөчид хадгалагдана. Бусад хүн харахгүй. Хөтчийн түүхийг цэвэрлэвэл устах тул <b>Нөөцлөх</b> товчоор файл болгож хадгалаарай.</p>
+        <div class="row"><input id="k-user" placeholder="Таны нэр (мэндчилгээнд)"><button class="btn" type="button" id="k-user-save">Нэр хадгалах</button></div>
+        <form class="row" id="k-form"><input id="k-q" placeholder="Асуулт, жишээ нь: ЗБН гэж юу вэ" required><input id="k-a" placeholder="Хариулт" required><button class="btn primary" type="submit" id="k-submit">Нэмэх</button><button class="btn" type="button" id="k-cancel" hidden>Болих</button></form>
+        <div class="tablewrap"><table><thead><tr><th>Асуулт</th><th>Хариулт</th><th></th></tr></thead><tbody id="k-list"></tbody></table></div>
+        <div class="row"><button class="btn" type="button" id="k-export">⬇ Нөөцлөх (файл)</button><button class="btn" type="button" id="k-import">⬆ Нөөцөөс сэргээх</button><input type="file" id="k-file" accept=".json,application/json" hidden></div>
+        <div class="sub" id="k-msg" style="margin:0"></div>
+      </details>
     </section>
   </div>
 </main>
@@ -401,32 +416,59 @@ table.report tr.light td { background: var(--light); color: #000; }
   /* ================= ASSISTANT ================= */
   var kb = { suppliers: {} }, sources = {};
   var SUP = ["Parts and oil", "Очлуур од", "AODE"];
+  /* Files given to the assistant are kept in this browser (IndexedDB holds tens of MB,
+     localStorage only ~5 MB), so the next visit works without adding them again. */
+  function idb(mode, fn) {
+    return new Promise(function (ok, fail) {
+      if (!window.indexedDB) return fail(new Error("no indexedDB"));
+      var rq = indexedDB.open("heregsel", 1);
+      rq.onupgradeneeded = function () { rq.result.createObjectStore("files"); };
+      rq.onerror = function () { fail(rq.error); };
+      rq.onsuccess = function () {
+        var db = rq.result, tx = db.transaction("files", mode), r = fn(tx.objectStore("files"));
+        tx.oncomplete = function () { db.close(); ok(r && r.result); };
+        tx.onerror = function () { db.close(); fail(tx.error); };
+      };
+    });
+  }
+  var forgot = false;
+  function keep(label, name, buf, hint) {
+    idb("readwrite", function (st) { return st.put({ name: name, buf: buf, hint: hint, saved: Date.now() }, label); }).catch(function () { /* storage blocked: this session only */ });
+  }
   function renderSources() {
     var names = Object.keys(sources);
     $("c-sources").innerHTML = names.length ? names.map(function (k) { return '<span class="chip src">✓ ' + esc(k) + ": " + esc(sources[k]) + "</span>"; }).join("")
       : '<span class="sub" style="margin:0">Одоогоор файл алга.</span>';
-    if (kb.catalog) {
-      var forget = document.createElement("button"); forget.type = "button"; forget.className = "chip"; forget.textContent = "Жагсаалтыг мартах";
-      forget.onclick = function () { delete kb.catalog; delete sources["Гэрээт сэлбэг"]; try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ } renderSources(); };
+    if (names.length) {
+      var forget = document.createElement("button"); forget.type = "button"; forget.className = "chip"; forget.textContent = "Файлуудыг мартах";
+      forget.onclick = function () {
+        ["stock", "requests", "catalog"].forEach(function (k) { delete kb[k]; });
+        kb.suppliers = {}; sources = {}; forgot = true;
+        try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ }
+        idb("readwrite", function (st) { return st.clear(); }).catch(function () { /* ignore */ });
+        renderSources();
+      };
       $("c-sources").appendChild(forget);
     }
   }
   function feed(f, hint) {
     if (hint === "draft") return;
-    read(f).then(function (buf) {
-      var r = AssistantCore.load(buf, f.name);
-      if (r.kind === "stock") { kb.stock = r.data; sources["Oracle үлдэгдэл"] = f.name; }
-      else if (r.kind === "requests") { kb.requests = r.data; sources["Засварын хүсэлт"] = f.name; }
-      else if (r.kind === "catalog") {
-        kb.catalog = r.data; sources["Гэрээт сэлбэг"] = f.name;
-        try { localStorage.setItem("catalog", JSON.stringify({ name: f.name, data: r.data })); } catch (e) { /* too large or blocked: keep for this session only */ }
-      }
-      else if (r.kind === "supplier") {
-        var label = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(f.name) ? "Очлуур од" : /aode|аодэ/i.test(f.name) ? "AODE" : "Parts and oil";
-        kb.suppliers[label] = r.data; sources[label] = f.name;
-      } else if (hint === undefined) { bot({ text: "**" + f.name + "** файлыг танисангүй. Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файл оруулна уу." }); }
-      renderSources();
-    }).catch(function (e) { bot({ text: "**" + f.name + "** файлыг уншиж чадсангүй: " + (e && e.message ? e.message : e) }); });
+    read(f).then(function (buf) { use(f.name, buf, hint, true); })
+      .catch(function (e) { bot({ text: "**" + f.name + "** файлыг уншиж чадсангүй: " + (e && e.message ? e.message : e) }); });
+  }
+  function use(name, buf, hint, fresh) {
+    var r = AssistantCore.load(buf, name), label = null, sup = null;
+    if (r.kind === "stock") label = "Oracle үлдэгдэл";
+    else if (r.kind === "requests") label = "Засварын хүсэлт";
+    else if (r.kind === "catalog") label = "Гэрээт сэлбэг";
+    else if (r.kind === "supplier") label = sup = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(name) ? "Очлуур од" : /aode|аодэ/i.test(name) ? "AODE" : "Parts and oil";
+    else if (hint === undefined && fresh) bot({ text: "**" + name + "** файлыг танисангүй. Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файл оруулна уу." });
+    if (label && !fresh && sources[label] && !/хадгалсан\)$/.test(sources[label])) return; // added this session: keep it
+    if (!label) return;
+    if (sup) kb.suppliers[sup] = r.data; else kb[r.kind] = r.data;
+    sources[label] = fresh ? name : name + " (хадгалсан)";
+    if (fresh) keep(label, name, buf, hint);
+    renderSources();
   }
   wireDrop("c-drop", "c-files", function (list) { Array.prototype.forEach.call(list, function (f) { feed(f); }); });
   function md(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
@@ -470,22 +512,90 @@ table.report tr.light td { background: var(--light); color: #000; }
     if (!q.trim()) return;
     say("me", esc(q));
     try { bot(AssistantCore.answer(q, kb)); } catch (e) { bot({ text: "Алдаа гарлаа: " + (e && e.message ? e.message : e) }); }
-    if (kb.dirty) {
-      kb.dirty = false;
-      try { localStorage.setItem("assistant", JSON.stringify({ user: kb.user || null, custom: kb.custom || {} })); } catch (e) { /* storage unavailable */ }
-    }
+    if (kb.dirty) saveKb();
     $("c-input").value = "";
   }
+
+  /* ---- personal knowledge base: localStorage only, never leaves this browser ---- */
+  var editing = null;
+  function saveKb() {
+    kb.dirty = false;
+    try { localStorage.setItem("assistant", JSON.stringify({ user: kb.user || null, custom: kb.custom || {} })); $("k-msg").textContent = ""; }
+    catch (e) { $("k-msg").textContent = "Хадгалж чадсангүй: хөтөч хадгалах санг хаасан байна."; }
+    renderKb();
+  }
+  function renderKb() {
+    var c = kb.custom || {}, keys = Object.keys(c).sort(function (a, b) { return c[a].q.localeCompare(c[b].q); });
+    $("k-count").textContent = keys.length;
+    $("k-user").value = kb.user || "";
+    $("k-list").innerHTML = keys.length ? keys.map(function (k) {
+      return "<tr><td>" + esc(c[k].q) + "</td><td>" + esc(c[k].a) + '</td><td class="act"><button class="btn" type="button" data-edit="' + esc(k) + '">Засах</button> <button class="btn" type="button" data-del="' + esc(k) + '">Устгах</button></td></tr>';
+    }).join("") : '<tr><td colspan="3" class="sub">Одоогоор хоосон. Дээрээс нэмэх, эсвэл чатад <b>заа: асуулт = хариулт</b> гэж бичнэ үү.</td></tr>';
+  }
+  function resetForm() { editing = null; $("k-q").value = ""; $("k-a").value = ""; $("k-submit").textContent = "Нэмэх"; $("k-cancel").hidden = true; }
+  $("k-form").onsubmit = function (e) {
+    e.preventDefault();
+    var q = $("k-q").value.trim(), a = $("k-a").value.trim(), k = AssistantCore.customKey(q);
+    if (!k || !a) return;
+    kb.custom = kb.custom || {};
+    if (editing && editing !== k) delete kb.custom[editing];
+    kb.custom[k] = { q: q, a: a };
+    resetForm(); saveKb();
+  };
+  $("k-cancel").onclick = resetForm;
+  $("k-list").onclick = function (e) {
+    var t = e.target, k;
+    if ((k = t.getAttribute("data-edit"))) {
+      editing = k; $("k-q").value = kb.custom[k].q; $("k-a").value = kb.custom[k].a;
+      $("k-submit").textContent = "Хадгалах"; $("k-cancel").hidden = false; $("k-q").focus();
+    } else if ((k = t.getAttribute("data-del"))) {
+      if (confirm("\"" + kb.custom[k].q + "\" -г устгах уу?")) { delete kb.custom[k]; if (editing === k) resetForm(); saveKb(); }
+    }
+  };
+  $("k-user-save").onclick = function () { kb.user = $("k-user").value.trim() || null; saveKb(); $("k-msg").textContent = "Нэр хадгалагдлаа."; };
+  $("k-export").onclick = function () {
+    var blob = new Blob([JSON.stringify({ app: "Heregsel", version: 1, saved: new Date().toISOString(), user: kb.user || null, custom: kb.custom || {} }, null, 2)], { type: "application/json" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "medlegiin_san_" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  };
+  $("k-import").onclick = function () { $("k-file").click(); };
+  $("k-file").onchange = function () {
+    var f = this.files[0]; this.value = "";
+    if (!f) return;
+    f.text().then(function (txt) {
+      var d = JSON.parse(txt), added = 0, changed = 0;
+      if (!d || typeof d.custom !== "object") throw new Error("мэдлэгийн сангийн нөөц файл биш байна");
+      kb.custom = kb.custom || {};
+      Object.keys(d.custom).forEach(function (x) {
+        var v = d.custom[x];
+        if (!v || typeof v.q !== "string" || typeof v.a !== "string") return;
+        var k = AssistantCore.customKey(v.q);
+        if (!kb.custom[k]) added++; else if (kb.custom[k].a !== v.a) changed++; else return;
+        kb.custom[k] = { q: v.q, a: v.a };
+      });
+      if (!kb.user && d.user) kb.user = d.user;
+      saveKb();
+      $("k-msg").textContent = "Сэргээлээ: " + added + " шинэ, " + changed + " шинэчилсэн.";
+    }).catch(function (e) { $("k-msg").textContent = "Уншиж чадсангүй: " + (e && e.message ? e.message : e); });
+  };
   $("c-form").onsubmit = function (e) { e.preventDefault(); ask($("c-input").value); };
   try {
     var mem = JSON.parse(localStorage.getItem("assistant") || "null");
     if (mem) { if (mem.user) kb.user = mem.user; kb.custom = mem.custom || {}; }
   } catch (e) { /* storage unavailable */ }
   try {
+    // older versions kept only the parsed catalog in localStorage
     var saved = JSON.parse(localStorage.getItem("catalog") || "null");
     if (saved && saved.data) { kb.catalog = saved.data; sources["Гэрээт сэлбэг"] = saved.name + " (хадгалсан)"; }
   } catch (e) { /* storage unavailable */ }
   renderSources();
+  idb("readonly", function (st) { return st.getAll(); }).then(function (all) {
+    (all || []).forEach(function (x) {
+      // a file added in this session already wins over the stored one
+      try { if (x && x.buf && !forgot) use(x.name, x.buf, x.hint, false); } catch (e) { /* skip a damaged entry */ }
+    });
+  }).catch(function () { /* storage unavailable */ });
+  renderKb();
   bot({ text: "Сайн байна уу" + (kb.user ? ", " + kb.user : "") + "! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, эдийн дугаар, засварын хүсэлтийг хайж, засварын нэр томьёог тайлбарлана. Энгийнээр ярилцаж ч болно. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
 
   if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore || !window.AssistantCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");

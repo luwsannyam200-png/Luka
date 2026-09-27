@@ -259,17 +259,19 @@
     return null;
   }
   var ASKS = /(гэж юу вэ|гэж юу бэ|гэдэг нь юу|гэдэг юу вэ|юу гэсэн уг|гэж юуг|тухай тайлбарла|тайлбарлаж ог|тайлбарла|юу вэ|юу бэ)\s*\??$/;
+  // key under which a taught question is stored (and looked up)
+  function customKey(q) { return fold(q).replace(/[?!.]+$/, "").trim(); }
   function teach(question, kb) {
     var m = /^\s*заа\s*:?\s*(.+?)\s*=\s*(.+)$/i.exec(question);
     if (m) {
       kb.custom = kb.custom || {};
-      kb.custom[fold(m[1]).replace(/[?!.]+$/, "").trim()] = { q: m[1].trim(), a: m[2].trim() };
+      kb.custom[customKey(m[1])] = { q: m[1].trim(), a: m[2].trim() };
       kb.dirty = true;
       return { text: "Ойлголоо, санаж авлаа ✅\n**" + m[1].trim() + "** → " + m[2].trim() };
     }
     m = /^\s*март(?:аа|)\s*:?\s*(.+)$/i.exec(question);
     if (m && kb.custom) {
-      var k = fold(m[1]).replace(/[?!.]+$/, "").trim();
+      var k = customKey(m[1]);
       if (kb.custom[k]) { delete kb.custom[k]; kb.dirty = true; return { text: "Мартлаа: **" + m[1].trim() + "**" }; }
       return { text: "\"" + m[1].trim() + "\" гэсэн заасан хариулт олдсонгүй." };
     }
@@ -510,8 +512,10 @@
   }
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
   function notUnderstood(kb) {
+    if (!kb.stock && !kb.catalog && !kb.requests)
+      return { text: "Энэ асуултад хариулахад файл хэрэгтэй. Oracle үлдэгдэл, гэрээт жагсаалт эсвэл засварын хүсэлтийн файлаа **нэг удаа** оруулна уу. Дараа нь энэ компьютерт хадгалагдах тул дахин оруулах шаардлагагүй.\nФайлгүйгээр нэр томьёоны тайлбар, таны заасан хариулт, энгийн яриа ажиллана.", examples: HELP.examples };
     return { text: "Уучлаарай, асуултыг ойлгосонгүй. Жишээ асуултуудаас сонгоод үзээрэй.", examples: HELP.examples };
   }
 
-  return { load: load, answer: answer, fold: fold, plateKey: plateKey, HELP: HELP };
+  return { load: load, answer: answer, fold: fold, plateKey: plateKey, customKey: customKey, HELP: HELP };
 });
