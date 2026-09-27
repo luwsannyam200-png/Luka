@@ -314,7 +314,7 @@ input.wide { width: 170px; }
       var pick = document.createElement("button"); pick.className = "btn"; pick.textContent = "Сонгох";
       var inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls"; inp.hidden = true;
       pick.onclick = function () { inp.click(); };
-      inp.onchange = function () { if (inp.files[0]) { files[s.key] = inp.files[0]; feed(inp.files[0], s.key); renderSlots(); } };
+      inp.onchange = function () { if (inp.files[0]) place(inp.files[0], s.key); inp.value = ""; };
       el.children[2].appendChild(pick); el.children[2].appendChild(inp);
       if (f) {
         var clr = document.createElement("button"); clr.className = "btn"; clr.textContent = "Хасах";
@@ -334,12 +334,54 @@ input.wide { width: 170px; }
         var s = SLOTS.filter(function (x) { return x.key === ORDER[i]; })[0];
         if (s.test.test(f.name)) hit = s;
       }
-      if (hit) { files[hit.key] = f; feed(f, hit.key); } else skipped.push(f.name);
+      if (hit) place(f, hit.key); else skipped.push(f.name);
     });
     renderSlots();
     if (skipped.length) show("w-result", "warn", "Ангилж чадаагүй файл: " + skipped.map(esc).join(", ") + '. Доорх "Сонгох" товчоор гараар оруулна уу.');
   }
   wireDrop("w-drop", "w-multi", assign);
+  /* Check a file's content before it takes a slot: an Oracle report must have
+     Item Code / Subinventory / Quantity (or Item Code / TL / TKH); a supplier
+     file put in the Oracle slot moves to its own slot. */
+  var SUPKEYS = ["Parts and oil", "Очлуур од", "AODE"];
+  function supplierByName(name) {
+    var n = name.normalize ? name.normalize("NFC") : name;
+    // Latin look-alikes in Cyrillic names ("Oчлуур" with a Latin O)
+    n = n.replace(/[OoCcAaEeHKMPTXxy]/g, function (c) { return { O: "О", o: "о", C: "С", c: "с", A: "А", a: "а", E: "Е", e: "е", H: "Н", K: "К", M: "М", P: "Р", T: "Т", X: "Х", x: "х", y: "у" }[c]; });
+    if (/очлуур|оchluur|ochluur/i.test(n) || /ochluur/i.test(name)) return "Очлуур од";
+    if (/аоде|аодэ/i.test(n) || /aode/i.test(name)) return "AODE";
+    if (/раrts|партс|parts/i.test(n) || /parts/i.test(name)) return "Parts and oil";
+    return null;
+  }
+  async function place(f, want) {
+    if (want === "draft") { files.draft = f; renderSlots(); return; }
+    var buf, isStock = false, isSup = false;
+    try {
+      buf = await read(f);
+      try { isStock = WeeklyCore.readOracleStock(buf).rows > 0; } catch (e) { isStock = false; }
+      if (!isStock) isSup = Object.keys(WeeklyCore.readSupplier(buf).values).length > 0;
+    } catch (e) { show("w-result", "bad", "<b>" + esc(f.name) + "</b> файлыг уншиж чадсангүй: " + esc(e && e.message ? e.message : e), true); return; }
+    var key = want;
+    if (want === "stock" && !isStock) {
+      var sup = isSup && supplierByName(f.name);
+      if (sup) {
+        key = sup;
+        show("w-result", "warn", "<b>" + esc(f.name) + "</b> нь Oracle-ийн үлдэгдэл биш, <b>" + esc(sup) + "</b> нийлүүлэгчийн файл байна. " + esc(sup) + " мөрөнд шилжүүллээ. Oracle үлдэгдлээ (жишээ нь 09-26 үлдэгдэл.xlsx) тусад нь оруулна уу.", true);
+      } else {
+        show("w-result", "bad", "<b>" + esc(f.name) + "</b> нь Oracle-ийн үлдэгдэл биш байна (Item Code, Subinventory, Quantity баганагүй). " + (isSup ? "Нийлүүлэгчийн файл бол тохирох нийлүүлэгчийн мөрний \"Сонгох\"-оор оруулна уу." : ""), true);
+        return;
+      }
+    } else if (SUPKEYS.indexOf(want) >= 0 && isStock) {
+      key = "stock";
+      show("w-result", "warn", "<b>" + esc(f.name) + "</b> нь Oracle-ийн үлдэгдэл байна. \"Oracle үлдэгдэл\" мөрөнд шилжүүллээ.", true);
+    } else if (SUPKEYS.indexOf(want) >= 0 && !isSup) {
+      show("w-result", "bad", "<b>" + esc(f.name) + "</b> файлаас 13 оронтой кодтой мөр олдсонгүй. Нийлүүлэгчийн үлдэгдлийн файл мөн эсэхийг шалгана уу.", true);
+      return;
+    }
+    files[key] = f;
+    try { use(f.name, buf, key, true); } catch (e) { /* the assistant just won't know this file */ }
+    renderSlots();
+  }
   function fmt(x, dec) {
     if (x == null || x === "") return '<span class="blank">—</span>';
     return Number(x).toLocaleString("en-US", { maximumFractionDigits: dec == null ? 2 : dec });

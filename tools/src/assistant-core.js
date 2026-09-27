@@ -614,7 +614,11 @@
 
     // spare parts: Oracle stock and/or the spare-part list (catalog)
     var stock = kb.stock, cat = kb.catalog;
-    if (!stock && !cat) return /\d{13}|шуур|улдэгдэл|сэлбэг|хэд байна|хаана/.test(q) ? need("stock") : notUnderstood(kb);
+    if (!stock && !cat) {
+      var known = partsWithoutStock(question, kb);
+      if (known) return known;
+      return /\d{13}|шуур|улдэгдэл|сэлбэг|хэд байна|хаана/.test(q) ? need("stock") : notUnderstood(kb);
+    }
 
     // contract items (the list = parts taken from the contract suppliers' warehouses)
     // that none of the loaded suppliers has in stock
@@ -721,6 +725,33 @@
       detailTitle: "Сэлбэг тус бүрээр:",
       detail: table(["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(["TL (УХ)", "TKH (ЦХ)"]).concat(supNames), perItem, 200),
       exportName: phrase
+    };
+  }
+  /* No Oracle stock and no list loaded: still say what is known about the part,
+     from the ТҮ tables (name, code) and any loaded supplier files (by code). */
+  function partsWithoutStock(question, kb) {
+    var code = /\d{13}/.exec(question), phrase = fold(phraseOf(question));
+    if (!code && phrase.length < 3) return null;
+    var found = {};
+    maintKits(kb).forEach(function (k) {
+      k.parts.forEach(function (p) {
+        if (code ? p.code !== code[0] : fold(p.name).indexOf(phrase) < 0) return;
+        var f = found[p.code] || (found[p.code] = { name: p.name, uses: [] });
+        var lv = k.levels.map(function (l, i) { return p.qty[i] ? l.label.replace(/\s*\(.*$/, "") + ": " + p.qty[i] : null; }).filter(Boolean);
+        f.uses.push(k.name + " (" + lv.join(", ") + ")");
+      });
+    });
+    var sup = kb.suppliers || {}, supNames = Object.keys(sup);
+    if (code && !found[code[0]] && supNames.some(function (n) { return sup[n][code[0]] != null; })) found[code[0]] = { name: "", uses: [] };
+    var codes = Object.keys(found);
+    if (!codes.length) return null;
+    return {
+      text: "Oracle-ийн үлдэгдлийн файл оруулаагүй тул **УХ, ЦХ-ийн тоог** хэлж чадахгүй байна. Үлдэгдлээ (жишээ нь 09-26 үлдэгдэл.xlsx) нэг удаа оруулбал хадгалагдана." +
+        "\nМэдэж байгаа нь: **" + codes.length + "** сэлбэг" + (supNames.length ? ", нийлүүлэгчийн үлдэгдэлтэй" : "") + ".",
+      table: table(["Item code", "Сэлбэг", "ТҮ-д орох"].concat(supNames), codes.map(function (c) {
+        return [c, found[c].name, found[c].uses.join("; ") || "—"].concat(supNames.map(function (n) { return fmt(sup[n][c] || 0); }));
+      }), 50),
+      exportName: phrase || (code && code[0])
     };
   }
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
