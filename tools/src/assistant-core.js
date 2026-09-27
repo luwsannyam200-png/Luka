@@ -64,6 +64,8 @@
     if (h) return { kind: "stock", data: loadStock(h), name: name };
     h = findHeader(sheets, ["засварын төрөл", "засварын байршил", "үйлчилгээ", "хүсэлт гаргасан"]);
     if (h) return { kind: "requests", data: loadRequests(h), name: name };
+    var kits = [].concat.apply([], sheets.map(parseMaint));
+    if (kits.length) return { kind: "maint", data: kits, name: name };
     h = findCatalogHeader(sheets);
     if (h) return { kind: "catalog", data: loadCatalog(h), name: name };
     var sup = loadSupplier(sheets[0]);
@@ -187,18 +189,162 @@
     limit = limit || 20;
     return { head: head, rows: rows.slice(0, limit), more: Math.max(0, rows.length - limit), all: rows };
   }
+  /* ---------- ТҮ (техник үйлчилгээ) сэлбэгийн хүснэгт ----------
+   * Built in from the user's sheet; an Excel file in the same layout adds or
+   * replaces machines. Layout: a row with ТҮ-1 (10000) … headers from column D,
+   * Activity row(s), a "№ | Item code | …" row, then one row per part. */
+  var MAINT_TSV = [
+    "Howo 371 Засвар\t\t\tTY-1 (10000)\tTY-2 (30000)\tTY-3, УЗ-1 (50000)\tТҮ-3, УЗ-2 (100000)\tТҮ-3, ИЗ (200000)",
+    "Activity\t\t\tTV001-MAI-004\tTV001-MAI-006\tTV001-MAI-005\tTV001-MAI-005\tTV001-MAI-005",
+    "№\tItem code\t\t\t\tTV001-MAI-021\tTV001-MAI-022\tTV001-MAI-023",
+    "1\t1512150100049\toil\t24\t24\t24\t24\t24",
+    "2\t4016150400048\toil filter Маслын шүүр\t2\t2\t2\t2\t2",
+    "3\t4016150500154\tair filter\t1\t1\t1\t1\t1",
+    "4\t4016151300136\tfuel filter Түлшний тунгаагуур\t1\t1\t1\t1\t1",
+    "5\t4016151300043\tfuel filter 2 Түлшний шүүр жижиг\t1\t1\t1\t1\t1",
+    "6\t1512150300019\tgear oil\t0\t18\t36,55\t36,55\t36,55",
+    "",
+    "HOWO T7H Төлөвлөгөөт засвар",
+    "Засвар\t\t\tTY-1 (10000)\tTY-2 (30000)\tTY-3, УЗ-1 (50000)\tТҮ-3, УЗ-2 (100000)\tТҮ-3, ИЗ (200000)",
+    "Activity\t\t\tTV001-MAI-030\tTV001-MAI-031\tTV001-MAI-032\tTV001-MAI-032\tTV001-MAI-032",
+    "№\tItem code\tDiscription\t\t\tTV001-MAI-021\tTV001-MAI-022\tTV001-MAI-023",
+    "1\t4016151300197\tТүлшний тунгаагуур /цахилгаан халаалтын/\t1\t1\t1\t1\t1",
+    "2\t4016151300198\tТүлшний тунгаагуур /энгийн/\t1\t1\t1\t1\t1",
+    "3\t4016151300199\tТүлшний тунгаагуурын шүүр\t1\t1\t1\t1\t1",
+    "4\t4016151300200\tТүлшний шүүр /цаасан/\t1\t1\t1\t1\t1",
+    "5\t4016150500154\tАгаар шүүгч\t1\t1\t1\t1\t1",
+    "6\t4016150400213\tТосны шүүр\t1\t1\t1\t1\t1",
+    "7\t1512150100093\tХөдөлгүүрийн тос\t42\t42\t42\t42\t42",
+    "8\t4016150500190\tЭйр кондейшны шүүр\t1\t1\t1\t1\t1",
+    "9\t1512150300019\tХүч дамжуулах ангийн тос\t0\t18\t54\t54\t54"
+  ].map(function (l) { return l.split("\t"); });
+  var LEVEL = /^\s*[tт][yуү]\s*-?\s*(\d)/i;
+  function maintQty(v) {
+    if (typeof v === "number") return v;
+    var s = String(v == null ? "" : v).trim();
+    if (/^\d+,\d{1,2}$/.test(s)) return parseFloat(s.replace(",", "."));   // 36,55 = 36.55 (decimal comma)
+    s = s.replace(/,/g, "");
+    return /^\d+(\.\d+)?$/.test(s) ? parseFloat(s) : 0;
+  }
+  function parseMaint(rows) {
+    var kits = [], txt = function (v) { return String(v == null ? "" : v).trim(); };
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i] || [], cols = [];
+      for (var c = 1; c < r.length; c++) if (LEVEL.test(txt(r[c]))) cols.push(c);
+      if (cols.length < 2) continue;
+      var clean = function (s) { return txt(s).replace(/төлөвлөгөөт|засвар/gi, "").replace(/\s+/g, " ").trim(); };
+      var name = clean(r[0]);
+      for (var p = i - 1; !name && p >= 0 && p >= i - 3; p--) name = clean((rows[p] || [])[0]);
+      var kit = { name: name || "Машин " + (kits.length + 1), levels: cols.map(function (c) {
+        return { label: txt(r[c]).replace(/^\s*[tт][yуү]/i, "ТҮ").replace(/,\s*[yу]з/i, ", УЗ"), n: +LEVEL.exec(txt(r[c]))[1], activity: [] };
+      }), parts: [] };
+      for (var j = i + 1; j < rows.length; j++) {
+        var row = rows[j] || [], code = txt(row[1]);
+        if (/^\d{10,13}$/.test(code)) {
+          kit.parts.push({ code: code, name: txt(row[2]), qty: cols.map(function (c) { return maintQty(row[c]); }) });
+        } else if (kit.parts.length && !row.some(function (x) { return txt(x); })) {
+          break;                                                           // blank line ends the table
+        } else if (kit.parts.length && cols.filter(function (c) { return LEVEL.test(txt(row[c])); }).length >= 2) {
+          break;                                                           // next machine
+        } else if (!kit.parts.length) {
+          cols.forEach(function (c, k) { var v = txt(row[c]); if (v) kit.levels[k].activity.push(v); });
+        }
+      }
+      if (kit.parts.length) kits.push(kit);
+      i = j - 1;
+    }
+    return kits;
+  }
+  var MAINT = parseMaint(MAINT_TSV);
+  function maintKey(s) {
+    // Latin and Cyrillic look-alikes: "т7н", "Т7Х" = "t7h"; "хово" = "howo"
+    return fold(s).replace(/хово/g, "howo").replace(/т/g, "t").replace(/[нх]/g, "h").replace(/[оo]/g, "o");
+  }
+  function maintKits(kb) {
+    var byName = {};
+    MAINT.concat(kb.maint || []).forEach(function (k) { byName[maintKey(k.name)] = k; });
+    return Object.keys(byName).map(function (k) { return byName[k]; });
+  }
+  function maintAnswer(question, q, kb) {
+    var kits = maintKits(kb), mq = " " + maintKey(question).replace(/[?!.,()]/g, " ") + " ";
+    var picked = kits.filter(function (k) {
+      return maintKey(k.name).split(" ").filter(function (t) { return t !== "howo" && t.length > 1; }).some(function (t) { return mq.indexOf(" " + t + " ") >= 0; });
+    });
+    var lv = /(?:^|[\s(])(?:ту|ty|tu)\s*-?\s*(\d)/.exec(q.replace(/ү/g, "у"));
+    var aboutKit = /(ту|ty|tu)[\s-]?(\d|н|ний|ны|ийн)|техник(ийн)? уйлчилгээ/.test(q) && /(сэлбэг|материал|юу|ямар|хэрэг|жагсаалт|орох|kit|тос|шуур)/.test(q);
+    if (!picked.length && !aboutKit) return null;
+    if (!picked.length) {
+      if (/howo|хово/.test(q)) picked = kits.filter(function (k) { return /howo/.test(maintKey(k.name)); });
+      if (!picked.length) picked = kits;
+    }
+    var stock = kb.stock, cat = kb.catalog;
+    var sub = /(уз|yz)\s*-?\s*(\d)/.exec(q) || (/(^|\s)(из|их засвар)(\s|$)/.test(q) ? [0, "из"] : null);
+    var km = /(\d{2,3})\s?000/.exec(q.replace(/(\d)\s(\d{3})/g, "$1$2"));
+    function pickLevels(k) {
+      return k.levels.map(function (l, i) { return i; }).filter(function (i) {
+        var l = k.levels[i], lab = fold(l.label).replace(/ty/g, "ту");
+        if (km) return lab.indexOf("(" + km[1] + "000)") >= 0;
+        if (lv && l.n !== +lv[1]) return false;
+        if (sub && sub[0] && lab.replace(/\s/g, "").indexOf("уз-" + sub[2]) < 0 && lab.replace(/\s/g, "").indexOf("уз" + sub[2]) < 0) return false;
+        if (sub && !sub[0] && lab.indexOf("из") < 0) return false;
+        return true;
+      });
+    }
+    function one(k) {
+      var idx = pickLevels(k);
+      if (!idx.length) idx = k.levels.map(function (l, i) { return i; });
+      var parts = k.parts.filter(function (p) { return idx.some(function (i) { return p.qty[i] > 0; }); });
+      var short = { TL: [], TKH: [] };
+      var rows = parts.map(function (p) {
+        var it = stock && stock[p.code];
+        var row = [p.code, p.name || (it ? it.mn || it.en : "")].concat(idx.map(function (i) { return p.qty[i]; }));
+        if (stock) {
+          var need = Math.max.apply(null, idx.map(function (i) { return p.qty[i]; }));
+          var tl = it ? it.tl : 0, tkh = it ? it.tkh : 0;
+          if (tl < need) short.TL.push(p.name || p.code);
+          if (tkh < need) short.TKH.push(p.name || p.code);
+          row = row.concat([fmt(tl), fmt(tkh), (tl >= need ? "✅" : "❌") + " / " + (tkh >= need ? "✅" : "❌")]);
+        }
+        if (cat) row.push(cat[p.code] ? "⭐" : "");
+        return row;
+      });
+      var head = ["Item code", "Сэлбэг"].concat(idx.map(function (i) { return k.levels[i].label; }))
+        .concat(stock ? ["TL (УХ)", "TKH (ЦХ)", "Хүрэлцэх УХ / ЦХ"] : []).concat(cat ? ["Гэрээт"] : []);
+      var acts = idx.map(function (i) { return k.levels[i].label + ": " + (k.levels[i].activity.join(", ") || "—"); });
+      var txt = "**" + k.name + "**, техник үйлчилгээний сэлбэг (" + parts.length + ")\nActivity: " + acts.join("; ");
+      if (stock) {
+        var sh = function (w, nm) { return short[w].length ? nm + "-д **хүрэлцэхгүй " + short[w].length + "**: " + short[w].join(", ") : nm + "-д бүгд хүрэлцэнэ ✅"; };
+        txt += "\n" + sh("TL", "УХ") + "\n" + sh("TKH", "ЦХ");
+      } else txt += "\nOracle-ийн үлдэгдэл оруулбал УХ, ЦХ-д хүрэлцэх эсэхийг харуулна.";
+      return { text: txt, table: table(head, rows, 100), exportName: k.name + "_TU" };
+    }
+    if (picked.length === 1) {
+      var a = one(picked[0]);
+      a.examples = picked[0].levels.map(function (l) { return picked[0].name + " " + l.label.replace(/\s*\(.*$/, "").replace(/,/, ""); }).filter(function (x, i, arr) { return arr.indexOf(x) === i; });
+      return a;
+    }
+    // several machines: first as the table, the rest listed as example chips
+    var first = one(picked[0]);
+    first.text = "ТҮ-ний сэлбэгийн хүснэгт **" + picked.length + "** машинд байна: " + picked.map(function (k) { return "**" + k.name + "**"; }).join(", ") + ".\nДоор **" + picked[0].name + "**-ийнх. Бусдыг нь доорх товчоор сонгоно уу.\n\n" + first.text;
+    var second = one(picked[1]);
+    first.detailTitle = picked[1].name + ":";
+    first.detail = second.table;
+    first.examples = picked.map(function (k) { return k.name + " ТҮ-1"; }).concat(picked.map(function (k) { return k.name + " ТҮ-2"; }));
+    return first;
+  }
+
   function need(kind) {
     var what = { stock: "Oracle-ийн үлдэгдлийн тайлан (жишээ нь 09-26 үлдэгдэл.xlsx)", requests: "Mine2TL-ийн засварын хүсэлтийн файл" }[kind];
     return { text: "Энэ асуултад хариулахын тулд **" + what + "** хэрэгтэй. Дээрх \"Файл нэмэх\" хэсэгт оруулна уу." };
   }
   var HELP = {
     text: "Би оруулсан файлуудаас хайж хариулна. Жишээ асуултууд:",
-    examples: ["агаар шүүгч", "зөвхөн ЦХ", "турбин гэж юу вэ", "маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "гэрээт сэлбэгээс нийлүүлэгчид байхгүй"]
+    examples: ["агаар шүүгч", "зөвхөн ЦХ", "ТҮ-ний сэлбэг", "Howo 371 ТҮ-2", "турбин гэж юу вэ", "маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "гэрээт сэлбэгээс нийлүүлэгчид байхгүй"]
   };
 
   /* ---------- conversation: small talk, knowledge, follow-ups ---------- */
   var GLOSSARY = [
-    [["ту", "техникийн уйлчилгээ"], "**ТҮ (техникийн үйлчилгээ)** нь машиныг эвдрэхээс нь өмнө тогтмол давтамжтай хийдэг урьдчилан сэргийлэх үйлчилгээ. Тос, шүүр солих, тослох, тохируулах зэрэг ажил багтана. **ТҮ-1, ТҮ-2, ТҮ-3** нь явсан км эсвэл мото цагаас хамаарсан шатууд бөгөөд дугаар ихсэх тусам ажлын хүрээ өргөн болно. Давтамжийг компанийн засвар үйлчилгээний журмаар тогтоодог."],
+    [["ту", "техник уйлчилгээ", "техникийн уйлчилгээ"], "**ТҮ (Техник үйлчилгээ)** нь машиныг эвдрэхээс нь өмнө тогтмол давтамжтай хийдэг урьдчилан сэргийлэх үйлчилгээ. Тос, шүүр солих, тослох, тохируулах зэрэг ажил багтана. **ТҮ-1, ТҮ-2, ТҮ-3** нь явсан км эсвэл мото цагаас хамаарсан шатууд бөгөөд дугаар ихсэх тусам ажлын хүрээ өргөн болно. Давтамжийг компанийн засвар үйлчилгээний журмаар тогтоодог."],
     [["уз"], "**УЗ** нь ТҮ-тэй хамт хийгддэг нэмэлт ажлын шатыг заадаг. Жишээ нь ТҮ-3 УЗ-1. Нарийн утгыг танай засварын журмаас шалгана уу. Та туслахад `заа: УЗ гэж юу вэ = …` гэж зааж өгч болно."],
     [["wo", "work order", "ажлын захиалга"], "**WO (Work Order, ажлын захиалга)** нь ERP (Oracle)-д засварын ажлыг бүртгэдэг баримт. Ямар машинд, ямар ажил хийх, ямар сэлбэг, хэдэн цагийн хөдөлмөр орохыг бүртгэдэг. Сэлбэг агуулахаас WO-оор гардаг. ER2286811 гэх мэт дугаартай."],
     [["erp", "oracle", "ebs"], "**ERP (Oracle E-Business Suite)** бол компанийн нэгдсэн удирдлагын систем. Санхүү, агуулах, худалдан авалт, засвар үйлчилгээ (eAM) бүгд нэг дор бүртгэгддэг. Сэлбэгийн үлдэгдлийн тайлан, WO хоёулаа эндээс гардаг."],
@@ -383,6 +529,8 @@
     if (t) return t;
     if (/тусла|юу асуу|жишээ|help|заавар/.test(q)) return HELP;
     kb._question = question;
+    var mt = maintAnswer(question, q, kb);
+    if (mt) return mt;
     var k = knowledge(q, kb);
     if (k) return k;
     var f = followUp(q, kb);

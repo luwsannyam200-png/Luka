@@ -461,6 +461,7 @@ table.report tr.light td { background: var(--light); color: #000; }
     if (r.kind === "stock") label = "Oracle үлдэгдэл";
     else if (r.kind === "requests") label = "Засварын хүсэлт";
     else if (r.kind === "catalog") label = "Гэрээт сэлбэг";
+    else if (r.kind === "maint") label = "ТҮ-ний сэлбэг";
     else if (r.kind === "supplier") label = sup = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(name) ? "Очлуур од" : /aode|аодэ/i.test(name) ? "AODE" : "Parts and oil";
     else if (hint === undefined && fresh) bot({ text: "**" + name + "** файлыг танисангүй. Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файл оруулна уу." });
     if (label && !fresh && sources[label] && !/хадгалсан\)$/.test(sources[label])) return; // added this session: keep it
