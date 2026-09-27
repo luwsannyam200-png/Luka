@@ -470,15 +470,23 @@ table.report tr.light td { background: var(--light); color: #000; }
     if (!q.trim()) return;
     say("me", esc(q));
     try { bot(AssistantCore.answer(q, kb)); } catch (e) { bot({ text: "Алдаа гарлаа: " + (e && e.message ? e.message : e) }); }
+    if (kb.dirty) {
+      kb.dirty = false;
+      try { localStorage.setItem("assistant", JSON.stringify({ user: kb.user || null, custom: kb.custom || {} })); } catch (e) { /* storage unavailable */ }
+    }
     $("c-input").value = "";
   }
   $("c-form").onsubmit = function (e) { e.preventDefault(); ask($("c-input").value); };
+  try {
+    var mem = JSON.parse(localStorage.getItem("assistant") || "null");
+    if (mem) { if (mem.user) kb.user = mem.user; kb.custom = mem.custom || {}; }
+  } catch (e) { /* storage unavailable */ }
   try {
     var saved = JSON.parse(localStorage.getItem("catalog") || "null");
     if (saved && saved.data) { kb.catalog = saved.data; sources["Гэрээт сэлбэг"] = saved.name + " (хадгалсан)"; }
   } catch (e) { /* storage unavailable */ }
   renderSources();
-  bot({ text: "Сайн байна уу! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, эдийн дугаар, засварын хүсэлтийг хайж өгнө. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
+  bot({ text: "Сайн байна уу" + (kb.user ? ", " + kb.user : "") + "! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, эдийн дугаар, засварын хүсэлтийг хайж, засварын нэр томьёог тайлбарлана. Энгийнээр ярилцаж ч болно. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
 
   if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore || !window.AssistantCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");
 })();
