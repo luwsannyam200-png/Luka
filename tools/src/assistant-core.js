@@ -166,7 +166,7 @@
   }
   var HELP = {
     text: "Би оруулсан файлуудаас хайж хариулна. Жишээ асуултууд:",
-    examples: ["маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "2025 жагсаалтаас агуулахад байхгүй"]
+    examples: ["маслын шүүр хэд байна", "4016150400048 хаана байна", "VG1540080311", "5840ӨМА", "хүсэлт хэд байна", "цагаан хадын гагнуур хэд", "8 хоногоос удсан хүсэлт", "гэрээт сэлбэгээс нийлүүлэгчид байхгүй"]
   };
 
   function answer(question, kb) {
@@ -244,16 +244,19 @@
     var stock = kb.stock, cat = kb.catalog;
     if (!stock && !cat) return /\d{13}|шуур|улдэгдэл|сэлбэг|хэд байна|хаана/.test(q) ? need("stock") : notUnderstood(kb);
 
-    // items of the list that are not in stock
-    if (cat && /(2025|жагсаалт)/.test(q) && /(байхгуй|алга|дууссан|дутуу|0)/.test(q)) {
-      if (!stock) return need("stock");
+    // contract items (the list = parts taken from the contract suppliers' warehouses)
+    // that none of the loaded suppliers has in stock
+    if (cat && /(гэрээт|2025|жагсаалт)/.test(q) && /(байхгуй|алга|дууссан|дутуу|0)/.test(q)) {
+      var supN = Object.keys(kb.suppliers || {});
+      if (!supN.length) return { text: "Гэрээт сэлбэгийн үлдэгдлийг шалгахын тулд **нийлүүлэгчийн файл** (AODE, Очлуур од, Parts and oil) хэрэгтэй. Дээрх \"Файлууд\" хэсэгт оруулна уу." };
       var none = Object.keys(cat).map(function (k) { return cat[k]; }).filter(function (c) {
-        var it = stock[c.code]; return !it || it.tl + it.tkh === 0;
+        return supN.every(function (sn) { return !(kb.suppliers[sn][c.code] > 0); });
       });
       return {
-        text: "Сэлбэгийн жагсаалтын **" + Object.keys(cat).length + "** сэлбэгээс **" + none.length + "** нь TL, TKH агуулахад алга (0).",
-        table: table(["Item code", "Нэр", "Бусад агуулах"], none.map(function (c) {
-          var it = stock[c.code]; return [c.code, c.mn || c.en, fmt(it ? it.total : 0)];
+        text: "Гэрээт **" + Object.keys(cat).length + "** сэлбэгээс **" + none.length + "** нь оруулсан нийлүүлэгчдэд (" + supN.join(", ") + ") алга." +
+          (supN.length < 3 ? "\nБүх нийлүүлэгчийн файлыг оруулаагүй тул тоо өсөж харагдаж болно." : ""),
+        table: table(["Item code", "Нэр"].concat(stock ? ["TL (УХ)", "TKH (ЦХ)"] : []), none.map(function (c) {
+          var it = stock && stock[c.code]; return [c.code, c.mn || c.en].concat(stock ? [fmt(it ? it.tl : 0), fmt(it ? it.tkh : 0)] : []);
         }), 30)
       };
     }
@@ -272,7 +275,7 @@
       if (cat) Object.keys(cat).forEach(function (k) { if (hit(cat[k].search)) set[k] = 1; });
       codes = Object.keys(set);
     }
-    if (!codes.length) return { text: "\"" + question.trim() + "\" гэсэн сэлбэг " + (stock ? "Oracle-ийн үлдэгдэлд" : "") + (stock && cat ? " болон " : "") + (cat ? "сэлбэгийн жагсаалтад" : "") + " олдсонгүй. Өөр үгээр, эдийн дугаараар эсвэл 13 оронтой Item code-оор хайгаад үзээрэй." };
+    if (!codes.length) return { text: "\"" + question.trim() + "\" гэсэн сэлбэг " + (stock ? "Oracle-ийн үлдэгдэлд" : "") + (stock && cat ? " болон " : "") + (cat ? "гэрээт сэлбэгийн жагсаалтад" : "") + " олдсонгүй. Өөр үгээр, эдийн дугаараар эсвэл 13 оронтой Item code-оор хайгаад үзээрэй." };
     var qty = function (k) { var it = stock && stock[k]; return it ? it.tl + it.tkh : 0; };
     codes.sort(function (a, b) {
       return ((cat && cat[b] ? 1 : 0) - (cat && cat[a] ? 1 : 0)) || (qty(b) - qty(a)) || ((stock && stock[b] ? stock[b].total : 0) - (stock && stock[a] ? stock[a].total : 0));
@@ -280,7 +283,7 @@
     var sup = kb.suppliers || {};
     var supNames = Object.keys(sup);
     var name = function (k) { var it = stock && stock[k], c = cat && cat[k]; return (it && (it.mn || it.en)) || (c && (c.mn || c.en)) || ""; };
-    var head = ["Item code", "Нэр"].concat(cat ? ["Жагсаалт"] : []).concat(stock ? ["TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"] : ["Тайлбар"]).concat(supNames);
+    var head = ["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(stock ? ["TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"] : ["Тайлбар"]).concat(supNames);
     var rows = codes.map(function (k) {
       var it = stock && stock[k], c = cat && cat[k];
       return [k, name(k)].concat(cat ? [c ? "⭐" : ""] : [])
@@ -288,14 +291,15 @@
         .concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); }));
     });
     var inCat = cat ? codes.filter(function (k) { return cat[k]; }).length : 0;
-    var text = codes.length === 1 ? "**" + name(codes[0]) + "** (" + codes[0] + ")" : "**" + codes.length + "** сэлбэг олдлоо" + (cat ? ", үүнээс **" + inCat + "** нь жагсаалтад ⭐" : "") + ":";
+    var text = codes.length === 1 ? "**" + name(codes[0]) + "** (" + codes[0] + ")" : "**" + codes.length + "** сэлбэг олдлоо" + (cat ? ", үүнээс **" + inCat + "** нь гэрээт ⭐" : "") + ":";
     if (!stock) text += "\nOracle-ийн үлдэгдлийн файл оруулбал агуулахын тоо харагдана.";
     var res = { text: text, table: table(head, rows, 15) };
     if (codes.length === 1) {
       var one = stock && stock[codes[0]], c1 = cat && cat[codes[0]];
-      if (c1) res.text += "\n" + c1.desc + (c1.type ? " · " + c1.type : "") + (c1.group ? " · " + c1.group : "");
+      if (c1) res.text += "\n⭐ Гэрээт агуулахаас авдаг сэлбэг." + (supNames.length ? "" : " Нийлүүлэгчийн файл оруулбал гэрээт агуулахын үлдэгдэл харагдана.") +
+        "\n" + c1.desc + (c1.type ? " · " + c1.type : "") + (c1.group ? " · " + c1.group : "");
       if (one) res.detail = table(["Агуулах (тавиур)", "Тоо (" + one.uom + ")"], Object.keys(one.subs).sort().map(function (s2) { return [s2, fmt(one.subs[s2])]; }), 30);
-      else if (stock) res.text += "\n⚠️ Энэ сэлбэг Oracle-ийн үлдэгдэлд алга (агуулахад 0).";
+      else if (stock && !c1) res.text += "\n⚠️ Энэ сэлбэг Oracle-ийн үлдэгдэлд алга (агуулахад 0).";
     }
     return res;
   }
