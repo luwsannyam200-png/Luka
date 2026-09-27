@@ -33,7 +33,7 @@ import zipfile
 from collections import Counter, defaultdict
 
 import openpyxl
-from openpyxl.styles import PatternFill
+from openpyxl.styles import Alignment, Border, PatternFill, Side
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 UX, CX = "Ухаа худаг", "Цагаан хад"
@@ -44,6 +44,7 @@ ACC = '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'
 WIDTHS = [15.1, 12.6, 17.4, 8.6, 12.8, 17.1, 10.6, 12.1, 12.3, 25.3, 15.9, 9.2, 12.7, 14.9, 15.4, 12.6, 17.2, 13.4, 13.8, 13.4, 14.0]
 TU_RE = re.compile(r"т[үуy]\s*-?\s*(\d(?:\.\d)?)", re.I)
 EPOCH = dt.datetime(1899, 12, 30)
+CALC_COLS = ("дууссан огноо", "засварын код", "машины төлөв")
 
 
 def norm(s):
@@ -233,10 +234,14 @@ def main():
     for j, h in enumerate(H, 1):
         c = out.cell(1, j, h)
         src = ws.cell(1, keep[j - 1] + 1)
-        c.font, c.fill, c.border, c.alignment = copy.copy(src.font), copy.copy(src.fill), copy.copy(src.border), copy.copy(src.alignment)
-        c.number_format = src.number_format
+        c.font, c.fill, c.alignment = copy.copy(src.font), copy.copy(src.fill), copy.copy(src.alignment)
+        b = src.border  # as in ЗМ 27: header without a top border
+        c.border = Border(left=copy.copy(b.left), right=copy.copy(b.right), top=Side(), bottom=copy.copy(b.bottom))
+        c.number_format = "General" if norm(h) in CALC_COLS else src.number_format
         out.column_dimensions[openpyxl.utils.get_column_letter(j)].width = WIDTHS[j - 1] if j <= len(WIDTHS) else 12
     blue_fill = PatternFill("solid", fgColor=BLUE)
+    gray_fill = PatternFill("solid", fgColor=GRAY)
+    out.row_dimensions[1].height = 12.75
     for i, r in enumerate(ordered, 2):
         for j in range(len(H)):
             c = out.cell(i, j + 1)
@@ -252,7 +257,14 @@ def main():
                 cached[c.coordinate] = val
             else:
                 c.value = val
-            c.number_format = ACC if k in ("дууссан огноо", "засварын код", "машины төлөв") else "General"
+            c.number_format = ACC if k in CALC_COLS else "General"
+            if r["blue"] and k in CALC_COLS:  # as in ЗМ 27: the hour columns of blue rows are gray
+                c.fill = copy.copy(gray_fill)
+                if k == "засварын код":
+                    c.alignment = Alignment(horizontal="left", vertical=c.alignment.vertical, wrap_text=c.alignment.wrap_text)
+        if r["blue"] and g(r, "үйлчилгээ") == "Төлөвлөгөөт":
+            out.cell(i, col("үйлчилгээ")).fill = copy.copy(gray_fill)
+        out.row_dimensions[i].height = 15.75
     last = openpyxl.utils.get_column_letter(len(H))
     t = Table(displayName="Table1", ref=f"A1:{last}{len(ordered) + 1}")
     t.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)

@@ -1013,7 +1013,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var block = function (tag) { var m = new RegExp("<" + tag + "\\b[^>]*>([\\s\\S]*?)</" + tag + ">").exec(xml); return m ? m[1] : ""; };
     var xfs = block("cellXfs").match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g) || [];
     var fills = block("fills").match(/<fill\b[^>]*?(?:\/>|>[\s\S]*?<\/fill>)/g) || [];
-    return { xfs: xfs, fills: fills };
+    var borders = block("borders").match(/<border\b[^>]*?(?:\/>|>[\s\S]*?<\/border>)/g) || [];
+    return { xfs: xfs, fills: fills, borders: borders };
   }
   function fillRgb(st, s) {
     var xf = st.xfs[s] || "";
@@ -1209,19 +1210,38 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var fills = st.fills.slice(), xfs = st.xfs.slice(), cache = {};
     var blueFill = fills.findIndex(function (f) { return new RegExp('rgb="' + BLUE + '"', "i").test(f) && /solid/.test(f); });
     if (blueFill < 0) { fills.push('<fill><patternFill patternType="solid"><fgColor rgb="' + BLUE + '"/><bgColor indexed="64"/></patternFill></fill>'); blueFill = fills.length - 1; }
-    function derive(s, fillId, numFmtId) {
-      var key = s + "|" + fillId + "|" + numFmtId;
+    var borders = st.borders.slice(), noTop = {};
+    var grayFill = fills.findIndex(function (f) { return new RegExp('rgb="' + GRAY + '"', "i").test(f) && /solid/.test(f); });
+    if (grayFill < 0) { fills.push('<fill><patternFill patternType="solid"><fgColor rgb="' + GRAY + '"/><bgColor indexed="64"/></patternFill></fill>'); grayFill = fills.length - 1; }
+    // o: {fill, numFmt, left: true (horizontal left), noTop: true (no top border)}
+    function derive(s, o) {
+      var key = s + "|" + JSON.stringify(o);
       if (cache[key] != null) return cache[key];
       var xf = xfs[s] || xfs[0], open = xf.match(/^<xf\b[^>]*?(\/?)>/)[0], selfClose = /\/>$/.test(open);
-      var tag = open.replace(/\s*\/?>$/, "");
-      if (fillId != null) { tag = setAttr(tag, "fillId", fillId); tag = setAttr(tag, "applyFill", "1"); }
-      if (numFmtId != null) { tag = setAttr(tag, "numFmtId", numFmtId); tag = setAttr(tag, "applyNumberFormat", "1"); }
-      var out = selfClose ? tag + "/>" : tag + ">" + xf.slice(open.length);
+      var tag = open.replace(/\s*\/?>$/, ""), body = selfClose ? "" : xf.slice(open.length).replace(/<\/xf>$/, "");
+      if (o.fill != null) { tag = setAttr(tag, "fillId", o.fill); tag = setAttr(tag, "applyFill", "1"); }
+      if (o.numFmt != null) { tag = setAttr(tag, "numFmtId", o.numFmt); tag = setAttr(tag, "applyNumberFormat", "1"); }
+      if (o.noTop) {
+        var bid = +(attr(tag, "borderId") || 0);
+        if (noTop[bid] == null) {
+          var b = borders[bid] || "<border/>";
+          b = /<top\b/.test(b) ? b.replace(/<top\b[^>]*?(?:\/>|>[\s\S]*?<\/top>)/, "<top/>") : b;
+          borders.push(b); noTop[bid] = borders.length - 1;
+        }
+        tag = setAttr(tag, "borderId", noTop[bid]); tag = setAttr(tag, "applyBorder", "1");
+      }
+      if (o.left) {
+        body = /<alignment\b/.test(body) ? body.replace(/<alignment\b[^>]*?\/?>/, function (a) { return setAttr(a.replace(/\s*\/?>$/, ""), "horizontal", "left") + (/\/>$/.test(a) ? "/>" : ">"); })
+          : '<alignment horizontal="left"/>' + body;
+        tag = setAttr(tag, "applyAlignment", "1");
+      }
+      var out = body ? tag + ">" + body + "</xf>" : tag + "/>";
       if (out === xf) return (cache[key] = s);
       xfs.push(out);
       return (cache[key] = xfs.length - 1);
     }
-    var calcFmt = function (k) { return ["дууссан огноо", "засварын код", "машины төлөв"].indexOf(k) >= 0 ? ACC_ID : 0; };
+    var CALC = ["дууссан огноо", "засварын код", "машины төлөв"];
+    var calcFmt = function (k) { return CALC.indexOf(k) >= 0 ? ACC_ID : 0; };
     var IDX = {}; H.forEach(function (h, j) { IDX[norm(h)] = j; });
     var ncol = H.length, last = colLetter(ncol), nrow = ordered.length + 1;
     var cellXml = function (ref, s, v, f) {
@@ -1235,17 +1255,28 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     // header keeps the source header cells' styles
     var keepCols = [], header = src.grid[0].map(norm), drop = header.indexOf("хэсгийн №");
     for (var i = 0; i < src.ncol; i++) if (i !== drop) keepCols.push(i);
-    var sd = ['<row r="1">' + H.map(function (h, j) { return cellXml(colLetter(j + 1) + "1", src.cellS[colLetter(keepCols[j] + 1) + "1"] || 0, h); }).join("") + "</row>"];
+    // as in ЗМ 27: header without a top border, the hour columns' headers in General
+    var sd = ['<row r="1" ht="12.75" customHeight="1">' + H.map(function (h, j) {
+      var o = { noTop: true }; if (CALC.indexOf(norm(h)) >= 0) o.numFmt = 0;
+      return cellXml(colLetter(j + 1) + "1", derive(src.cellS[colLetter(keepCols[j] + 1) + "1"] || 0, o), h);
+    }).join("") + "</row>"];
     ordered.forEach(function (r, n) {
       var rn = n + 2, cells = [];
       for (var j = 0; j < ncol; j++) {
         var s = r.s[j], v = r.v[j], f = null, fmt = null;
         var k = Object.keys(r.calc || {}).filter(function (x) { return IDX[x] === j; })[0];
         if (k) { f = r.calc[k][0]; v = r.calc[k][1]; fmt = calcFmt(k); }
-        s = derive(s, r.blue ? blueFill : null, fmt);
+        var o = {};
+        if (r.blue) o.fill = blueFill;
+        if (fmt != null) o.numFmt = fmt;
+        // as in ЗМ 27: on blue rows the hour columns are gray (Засварын код left-aligned),
+        // and so is Үйлчилгээ when it became Төлөвлөгөөт
+        if (r.blue && CALC.indexOf(k) >= 0) { o.fill = grayFill; if (k === "засварын код") o.left = true; }
+        if (r.blue && j === IDX["үйлчилгээ"] && v === "Төлөвлөгөөт") o.fill = grayFill;
+        s = derive(s, o);
         cells.push(cellXml(colLetter(j + 1) + rn, s, v, f));
       }
-      sd.push('<row r="' + rn + '">' + cells.join("") + "</row>");
+      sd.push('<row r="' + rn + '" ht="15.75" customHeight="1">' + cells.join("") + "</row>");
     });
     var cols = "<cols>" + H.map(function (h, j) { return '<col min="' + (j + 1) + '" max="' + (j + 1) + '" width="' + (WIDTHS[j] || 12) + '" customWidth="1"/>'; }).join("") + "</cols>";
     var sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet ' + NS + '><dimension ref="A1:' + last + nrow + '"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="15"/>' +
@@ -1269,6 +1300,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     zip.file(src.sheetPath, sheet);
     // styles: extra fill and derived xfs
     styles = styles.replace(/<fills\b[^>]*>[\s\S]*?<\/fills>/, '<fills count="' + fills.length + '">' + fills.join("") + "</fills>")
+      .replace(/<borders\b[^>]*>[\s\S]*?<\/borders>/, '<borders count="' + borders.length + '">' + borders.join("") + "</borders>")
       .replace(/<cellXfs\b[^>]*>[\s\S]*?<\/cellXfs>/, '<cellXfs count="' + xfs.length + '">' + xfs.join("") + "</cellXfs>");
     zip.file("xl/styles.xml", styles);
     return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
