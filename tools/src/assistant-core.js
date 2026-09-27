@@ -11,7 +11,7 @@
 
   var LATIN = { A: "А", B: "В", E: "Е", K: "К", M: "М", H: "Н", O: "О", P: "Р", C: "С", T: "Т", X: "Х", Y: "У" };
   var LOCS = { "ухаа худаг": "Ухаа худаг", "ух": "Ухаа худаг", "цагаан хад": "Цагаан хад", "цх": "Цагаан хад", "замд": "Замд" };
-  var STOP = ["хэд", "хэдэн", "байна", "байгаа", "бий", "юу", "уу", "үү", "вэ", "бэ", "нь", "хаана", "үлдэгдэл", "үлдэгдэлтэй",
+  var STOP = ["зөвхөн", "дээрх", "дахь", "хэд", "хэдэн", "байна", "байгаа", "бий", "юу", "уу", "үү", "вэ", "бэ", "нь", "хаана", "үлдэгдэл", "үлдэгдэлтэй",
     "агуулахад", "агуулах", "ширхэг", "ш", "тоо", "хэмжээ", "сэлбэг", "код", "кодтой", "item", "ямар", "олох", "хай", "хайх",
     "харуул", "мэдээлэл", "дээр", "бол", "тэр", "энэ", "за", "надад", "тэгвэл", "одоо", "дахиад", "бас", "харуулаач", "хайгаач", "олоод", "өгөөч", "?", "."];
 
@@ -305,17 +305,44 @@
     return { text: "\"" + shown + "\"-ийн тухай мэдлэг надад алга. Би интернэтгүй тул зөвхөн бэлэн мэдлэгийн сангаас хариулдаг.\nТа надад зааж өгч болно: `заа: " + shown + " гэж юу вэ = …`" };
   }
   function followUp(q, kb) {
-    var last = kb.last;
-    if (!last) return null;
-    if (/^(excel|эксел|татах|татаж ав|excel болго|эксел болго|файл болго)/.test(q) || /(excel|эксел) (болго|татах|гарга)/.test(q))
+    var last = kb.last || {};
+    if (last.answer && (/^(excel|эксел|татах|татаж ав|excel болго|эксел болго|файл болго)/.test(q) || /(excel|эксел) (болго|татах|гарга)/.test(q)))
       return Object.assign({}, last.answer, { text: "Сүүлийн хайлт (**" + last.phrase + "**)-ыг Excel болгох товч доор байна." });
-    var loc = /(^|\s)(цх|tkh|цагаан хад)/.test(q) ? "TKH" : /(^|\s)(ух|tl|ухаа худаг)/.test(q) ? "TL" : null;
-    if (loc && last.rows && words(q).length <= 4 && /(зовхон|дээр|дахь|агуулах|тэр|уунээс|эндээс|^цх$|^ух$|^tkh$|^tl$)/.test(q)) {
-      var rows = last.rows.filter(function (r) { return String(r[3]).toUpperCase().indexOf(loc) === 0; });
-      var sum = rows.reduce(function (a, r) { return a + (Number(r[5]) || 0); }, 0);
+    // "зөвхөн ЦХ", "УХ,ЦХ нь хэрэгтэй", "TL . TKH үлдэгдэл л хэрэгтэй": narrow the last search by warehouse
+    var t = " " + q.replace(/[,.;:/\\|+&()!?-]/g, " ") + " ";
+    var wantTkh = /\s(цх|tkh|цагаан хад[а-я]*)\s/.test(t), wantTl = /\s(ух|tl|ухаа худаг[а-я]*)\s/.test(t);
+    var rest = t.replace(/\s(цх|tkh|цагаан хад[а-я]*|ух|tl|ухаа худаг[а-я]*)(?=\s)/g, " ")
+      .replace(/\s(зовхон|дээр|дээрх|дээрхи|дахь|дахи|агуулах|агуулахын|тэр|уунээс|эндээс|нь|л|хэрэгтэй|байна|улдэгдэл|улдэгдлийг|улдэгдэлийг|харуул|харуулаач|гарга|байгаа|ба|болон|мон|and|хоёр|2|хоер|дагуу|дээрхийг|шуу)(?=\s)/g, " ").trim();
+    // "цагаан хадын гагнуур" with a request file is a question about repair requests, not parts
+    var isService = kb.requests && kb.requests.list.some(function (r) { var v = fold(r.srv); return v && rest.indexOf(v) >= 0; });
+    if ((wantTkh || wantTl) && rest && kb.stock && !kb._narrowing && !isService) {
+      // "ЦХ дээр маслын шүүр": search the part, then narrow to the warehouse
+      var part = (" " + String(kb._question || q).toLowerCase().replace(/[,.;:/\\|+&()!?-]/g, " ") + " ")
+        .replace(/\s(цх|tkh|цагаан хад[а-яөү]*|ух|tl|ухаа худаг[а-яөү]*)(?=\s)/g, " ").trim();
+      var ph = part && phraseAnswer(part, kb);
+      if (!ph || !ph.table || !ph.table.all) return null;
+      kb.last = { phrase: phraseOf(part), rows: ph.table.all, answer: ph };
+      kb._narrowing = true;
+      try { return followUp(wantTl && wantTkh ? "ух цх" : wantTl ? "ух" : "цх", kb); } finally { kb._narrowing = false; }
+    }
+    if ((wantTkh || wantTl) && last.rows && !rest) {
+      var locs = (wantTl ? ["TL"] : []).concat(wantTkh ? ["TKH"] : []);
+      var where = function (r) { var u = String(r[3]).toUpperCase(); return u.indexOf("TKH") === 0 ? "TKH" : u.indexOf("TL") === 0 ? "TL" : ""; };
+      var rows = last.rows.filter(function (r) { return locs.indexOf(where(r)) >= 0; });
+      var sums = { TL: 0, TKH: 0 }, per = {};
+      rows.forEach(function (r) {
+        var w = where(r), n = Number(r[5]) || 0; sums[w] += n;
+        per[r[0]] = per[r[0]] || { name: r[1], TL: 0, TKH: 0 }; per[r[0]][w] += n;
+      });
+      var NAME = { TL: "Ухаа худаг (TL)", TKH: "Цагаан хад (TKH)" };
+      var perRows = Object.keys(per).map(function (k) { return [k, per[k].name].concat(locs.map(function (l) { return per[k][l]; })); })
+        .sort(function (a, b) { return b.slice(2).reduce(function (x, y) { return x + y; }, 0) - a.slice(2).reduce(function (x, y) { return x + y; }, 0); });
       return {
-        text: "**\"" + last.phrase + "\"** — зөвхөн **" + (loc === "TL" ? "Ухаа худаг (TL)" : "Цагаан хад (TKH)") + "**: " + rows.length + " мөр, нийт **" + fmt(sum) + "**.",
-        table: table(last.answer.table.head, rows, 500), exportName: last.phrase + "_" + loc
+        text: "**\"" + last.phrase + "\"**, зөвхөн " + locs.map(function (l) { return "**" + NAME[l] + "**: " + fmt(sums[l]); }).join(", ") + ". Нийт " + rows.length + " мөр, " + perRows.length + " сэлбэг.",
+        table: table(last.answer.table.head, rows, 500),
+        detailTitle: "Сэлбэг тус бүрээр:",
+        detail: table(["Item code", "Нэр"].concat(locs.map(function (l) { return NAME[l]; })), perRows.map(function (r) { return r.slice(0, 2).concat(r.slice(2).map(fmt)); }), 200),
+        exportName: last.phrase + "_" + locs.join("_")
       };
     }
     return null;
