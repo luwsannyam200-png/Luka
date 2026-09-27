@@ -27,6 +27,7 @@ def main():
         "/*XLSX*/": Path(a.xlsx).read_text(encoding="utf-8"),
         "/*WEEKLY_CORE*/": (HERE / "src" / "weekly-core.js").read_text(encoding="utf-8"),
         "/*ZASVAR_CORE*/": (HERE / "src" / "zasvar-core.js").read_text(encoding="utf-8"),
+        "/*ASSISTANT_CORE*/": (HERE / "src" / "assistant-core.js").read_text(encoding="utf-8"),
     }
     for marker, js in parts.items():
         assert html.count(marker) == 1, marker

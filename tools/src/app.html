@@ -70,6 +70,18 @@ table.report tr.light td { background: var(--light); color: #000; }
 .stat b { display: block; font-size: 20px; }
 .stat span { color: var(--muted); font-size: 12px; }
 .stat.hot b { color: var(--bad); }
+.tabs { grid-template-columns: 1fr 1fr 1fr; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.chip.src { cursor: default; background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.chat { display: flex; flex-direction: column; gap: 10px; max-height: 60vh; overflow-y: auto; padding: 4px 2px 8px; }
+.bubble { max-width: 92%; padding: 10px 12px; border-radius: 12px; }
+.bubble.me { align-self: flex-end; background: var(--accent); color: var(--accent-text); border-bottom-right-radius: 4px; }
+.bubble.bot { align-self: flex-start; background: var(--drop); border-bottom-left-radius: 4px; max-width: 100%; }
+.bubble table { margin-top: 8px; background: var(--panel); }
+.bubble td, .bubble th { white-space: normal; text-align: left; }
+.ask { display: flex; gap: 8px; margin-top: 8px; }
+.ask input { flex: 1; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
 [hidden] { display: none !important; }
 @media (max-width: 640px) { .slot { grid-template-columns: 1fr auto; } .slot .file { grid-column: 1 / -1; } .tabs { grid-template-columns: 1fr; } }
 </style>
@@ -82,6 +94,7 @@ table.report tr.light td { background: var(--light); color: #000; }
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-weekly" data-tool="weekly"><b>📦 Weekly үлдэгдэл</b><span>Weekly draft-д өнөөдрийн sheet нэмэх</span></button>
     <button class="tab" role="tab" id="tab-zasvar" data-tool="zasvar"><b>🔧 Засварын хүсэлт</b><span>Mine2TL-ийн хүсэлтээс тайлан гаргах</span></button>
+    <button class="tab" role="tab" id="tab-chat" data-tool="chat"><b>💬 Туслах</b><span>Файлуудаас асуултаар хайх</span></button>
   </div>
 
   <!-- ================= WEEKLY ================= -->
@@ -136,12 +149,29 @@ table.report tr.light td { background: var(--light); color: #000; }
       <div class="tablewrap"><table class="report" id="z-table"></table></div>
     </section>
   </div>
+
+  <!-- ================= ASSISTANT ================= -->
+  <div id="tool-chat" hidden>
+    <section class="panel">
+      <h2>Файлууд</h2>
+      <div class="drop" id="c-drop">Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Бусад табад оруулсан файлыг автоматаар ашиглана.</small></div>
+      <input type="file" id="c-files" multiple accept=".xlsx,.xls" hidden>
+      <div class="chips" id="c-sources"></div>
+    </section>
+    <section class="panel">
+      <h2>Асуулт</h2>
+      <div class="chat" id="c-log" aria-live="polite"></div>
+      <div class="chips" id="c-examples"></div>
+      <form class="ask" id="c-form"><input id="c-input" autocomplete="off" placeholder="Жишээ нь: маслын шүүр хэд байна"><button class="btn primary" type="submit">Асуух</button></form>
+    </section>
+  </div>
 </main>
 
 <script>/*JSZIP*/</script>
 <script>/*XLSX*/</script>
 <script>/*WEEKLY_CORE*/</script>
 <script>/*ZASVAR_CORE*/</script>
+<script>/*ASSISTANT_CORE*/</script>
 <script>
 (function () {
   "use strict";
@@ -173,7 +203,7 @@ table.report tr.light td { background: var(--light); color: #000; }
 
   /* ---------- tool switcher ---------- */
   function choose(tool) {
-    ["weekly", "zasvar"].forEach(function (t) {
+    ["weekly", "zasvar", "chat"].forEach(function (t) {
       $("tool-" + t).hidden = t !== tool;
       $("tab-" + t).setAttribute("aria-selected", String(t === tool));
     });
@@ -182,8 +212,9 @@ table.report tr.light td { background: var(--light); color: #000; }
   }
   Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) { b.onclick = function () { choose(b.dataset.tool); }; });
   var start = location.hash.slice(1);
-  if (start !== "weekly" && start !== "zasvar") { try { start = localStorage.getItem("tool"); } catch (e) { start = null; } }
-  choose(start === "zasvar" ? "zasvar" : "weekly");
+  if (["weekly", "zasvar", "chat"].indexOf(start) < 0) { try { start = localStorage.getItem("tool"); } catch (e) { start = null; } }
+  choose(["zasvar", "chat"].indexOf(start) >= 0 ? start : "weekly");
+  window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (["weekly", "zasvar", "chat"].indexOf(t) >= 0) choose(t); });
 
   /* ================= WEEKLY ================= */
   var SLOTS = [
@@ -212,7 +243,7 @@ table.report tr.light td { background: var(--light); color: #000; }
       var pick = document.createElement("button"); pick.className = "btn"; pick.textContent = "Сонгох";
       var inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls"; inp.hidden = true;
       pick.onclick = function () { inp.click(); };
-      inp.onchange = function () { if (inp.files[0]) { files[s.key] = inp.files[0]; renderSlots(); } };
+      inp.onchange = function () { if (inp.files[0]) { files[s.key] = inp.files[0]; feed(inp.files[0], s.key); renderSlots(); } };
       el.children[2].appendChild(pick); el.children[2].appendChild(inp);
       if (f) {
         var clr = document.createElement("button"); clr.className = "btn"; clr.textContent = "Хасах";
@@ -232,7 +263,7 @@ table.report tr.light td { background: var(--light); color: #000; }
         var s = SLOTS.filter(function (x) { return x.key === ORDER[i]; })[0];
         if (s.test.test(f.name)) hit = s;
       }
-      if (hit) files[hit.key] = f; else skipped.push(f.name);
+      if (hit) { files[hit.key] = f; feed(f, hit.key); } else skipped.push(f.name);
     });
     renderSlots();
     if (skipped.length) show("w-result", "warn", "Ангилж чадаагүй файл: " + skipped.map(esc).join(", ") + '. Доорх "Сонгох" товчоор гараар оруулна уу.');
@@ -306,7 +337,7 @@ table.report tr.light td { background: var(--light); color: #000; }
     var f = list[0];
     if (!f) return;
     if (!/\.xlsx$/i.test(f.name)) { show("z-result", "bad", "Зөвхөн .xlsx файл оруулна уу. Excel дээр нээгээд <b>Save As → Excel Workbook (.xlsx)</b> хийнэ үү."); return; }
-    zfile = f; $("z-name").textContent = f.name; $("z-name").classList.add("set");
+    zfile = f; feed(f, "requests"); $("z-name").textContent = f.name; $("z-name").classList.add("set");
     $("z-go").disabled = false; $("z-result").innerHTML = "";
   }
   wireDrop("z-drop", "z-file", setZ);
@@ -367,7 +398,62 @@ table.report tr.light td { background: var(--light); color: #000; }
     $("z-preview").hidden = false;
   }
 
-  if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");
+  /* ================= ASSISTANT ================= */
+  var kb = { suppliers: {} }, sources = {};
+  var SUP = ["Parts and oil", "Очлуур од", "AODE"];
+  function renderSources() {
+    var names = Object.keys(sources);
+    $("c-sources").innerHTML = names.length ? names.map(function (k) { return '<span class="chip src">✓ ' + esc(k) + ": " + esc(sources[k]) + "</span>"; }).join("")
+      : '<span class="sub" style="margin:0">Одоогоор файл алга.</span>';
+  }
+  function feed(f, hint) {
+    if (hint === "draft") return;
+    read(f).then(function (buf) {
+      var r = AssistantCore.load(buf, f.name);
+      if (r.kind === "stock") { kb.stock = r.data; sources["Oracle үлдэгдэл"] = f.name; }
+      else if (r.kind === "requests") { kb.requests = r.data; sources["Засварын хүсэлт"] = f.name; }
+      else if (r.kind === "supplier") {
+        var label = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(f.name) ? "Очлуур од" : /aode|аодэ/i.test(f.name) ? "AODE" : "Parts and oil";
+        kb.suppliers[label] = r.data; sources[label] = f.name;
+      } else if (hint === undefined) { bot({ text: "**" + f.name + "** файлыг танисангүй. Oracle үлдэгдэл, нийлүүлэгчийн эсвэл засварын хүсэлтийн файл оруулна уу." }); }
+      renderSources();
+    }).catch(function (e) { bot({ text: "**" + f.name + "** файлыг уншиж чадсангүй: " + (e && e.message ? e.message : e) }); });
+  }
+  wireDrop("c-drop", "c-files", function (list) { Array.prototype.forEach.call(list, function (f) { feed(f); }); });
+  function md(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
+  function tableHtml(t) {
+    if (!t || !t.rows.length) return "";
+    return '<div class="tablewrap"><table><thead><tr>' + t.head.map(function (h) { return "<th>" + esc(h) + "</th>"; }).join("") + "</tr></thead><tbody>" +
+      t.rows.map(function (r) { return "<tr>" + r.map(function (c) { return "<td>" + esc(c) + "</td>"; }).join("") + "</tr>"; }).join("") +
+      "</tbody></table></div>" + (t.more ? '<div class="sub" style="margin:4px 0 0">… бас ' + t.more + " мөр</div>" : "");
+  }
+  function say(cls, html) {
+    var el = document.createElement("div"); el.className = "bubble " + cls; el.innerHTML = html;
+    $("c-log").appendChild(el); $("c-log").scrollTop = $("c-log").scrollHeight;
+  }
+  function bot(a) {
+    say("bot", md(a.text) + tableHtml(a.table) + (a.detail ? '<div class="sub" style="margin:8px 0 0">Агуулах, тавиураар:</div>' + tableHtml(a.detail) : ""));
+    if (a.examples) setExamples(a.examples);
+  }
+  function setExamples(list) {
+    $("c-examples").innerHTML = "";
+    list.forEach(function (q) {
+      var b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = q;
+      b.onclick = function () { ask(q); };
+      $("c-examples").appendChild(b);
+    });
+  }
+  function ask(q) {
+    if (!q.trim()) return;
+    say("me", esc(q));
+    try { bot(AssistantCore.answer(q, kb)); } catch (e) { bot({ text: "Алдаа гарлаа: " + (e && e.message ? e.message : e) }); }
+    $("c-input").value = "";
+  }
+  $("c-form").onsubmit = function (e) { e.preventDefault(); ask($("c-input").value); };
+  renderSources();
+  bot({ text: "Сайн байна уу! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, засварын хүсэлтийг хайж өгнө. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
+
+  if (!window.JSZip || !window.XLSX || !window.WeeklyCore || !window.ZasvarCore || !window.AssistantCore) show("w-result", "bad", "Програмын сан ачаалагдсангүй. Файл бүтэн эсэхийг шалгана уу.");
 })();
 </script>
 </body>
