@@ -5,7 +5,7 @@ Output workbook:
   Тайлан    rows Засварын байршил > Үйлчилгээ, columns = request day (report layout)
   Pivot     rows Засварын төрөл > Засварын байршил > Үйлчилгээ, columns = request day, values = count
   Хүлээлт   same rows, columns = days waiting (0, 1-3, 4-7, 8+)
-  Анхаарах  urgent requests, long waits, ERP WO numbers, data errors
+  + the original export sheet(s), unchanged
 
 Usage:
   zasvar_report.py --input "засвар 9-26rqst.xlsx" --out "Засварын хүсэлт_09.27.xlsx" [--today 2026-09-27]
@@ -23,15 +23,12 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 BLANK = "(хоосон)"
-URGENT_WORDS = re.compile(r"тормоз|тоормоз|tormoz|brake|гал\s*авсан|утаа", re.I)
-WO_RE = re.compile(r"\bER\d{6,8}\b", re.I)
 BUCKETS = [("Өнөөдөр", 0, 0), ("1–3 хоног", 1, 3), ("4–7 хоног", 4, 7), ("8+ хоног", 8, 10 ** 6)]
 
 HEAD = PatternFill("solid", fgColor="B4E5D2")
 SUB1 = PatternFill("solid", fgColor="DDF3EA")
 SUB2 = PatternFill("solid", fgColor="F0FAF5")
 RED = PatternFill("solid", fgColor="F8D2CE")
-AMBER = PatternFill("solid", fgColor="FCEBC2")
 THIN = Border(bottom=Side(style="thin", color="C8D3CE"))
 
 
@@ -200,9 +197,11 @@ def report_table(ws, reqs, days, top=4, left=3):
         total = Counter()
         for s in cnt[loc].values():
             total.update(s)
-        put(r, loc, total, BLUE, True)
+        services = sorted(s for s in cnt[loc] if s != BLANK)
+        # A location with no listed services (e.g. Замд) is styled like a service row.
+        put(r, loc, total, BLUE if services else LIGHT, bool(services))
         r += 1
-        for srv in sorted(s for s in cnt[loc] if s != BLANK):
+        for srv in services:
             put(r, srv, cnt[loc][srv], LIGHT, False)
             r += 1
     put(r, "Нийт хүсэлт", Counter(q["req"].date() for q in reqs), NAVY, True)
@@ -226,22 +225,26 @@ def main():
     for q in reqs:
         q["days"] = (today - q["req"].date()).days
 
-    wb = openpyxl.Workbook()
+    # Keep the original export as-is and put the report sheets in front of it.
+    wb = openpyxl.load_workbook(a.input)
+    src_names = wb.sheetnames
+    for name in ("Тайлан", "Pivot", "Хүлээлт"):
+        if name in src_names:
+            sys.exit(f'Эх файлд "{name}" нэртэй sheet аль хэдийн байна')
 
     days = sorted({q["req"].date() for q in reqs})
 
     # 1. Тайлан: presentation table (location > service by request day)
-    ws0 = wb.active
-    ws0.title = "Тайлан"
+    ws0 = wb.create_sheet("Тайлан", 0)
     report_table(ws0, reqs, days)
 
     # 2. Pivot: same with Засварын төрөл as the top level
-    ws = wb.create_sheet("Pivot")
+    ws = wb.create_sheet("Pivot", 1)
     tree_table(ws, reqs, days, lambda q: q["req"].date(),
                ["Засварын төрөл / байршил / үйлчилгээ"] + [d.strftime("%d-%b") for d in days])
 
     # 3. Хүлээлт: columns = waiting buckets
-    ws2 = wb.create_sheet("Хүлээлт")
+    ws2 = wb.create_sheet("Хүлээлт", 2)
     labels = [b[0] for b in BUCKETS]
     bucket = lambda q: next(b[0] for b in BUCKETS if b[1] <= q["days"] <= b[2])
     last = tree_table(ws2, reqs, labels, bucket, [f"Өнөөдөр: {today:%Y-%m-%d}"] + labels)
@@ -250,50 +253,15 @@ def main():
         if c.value:
             c.fill = RED
 
-    # 4. Анхаарах
-    ws3 = wb.create_sheet("Анхаарах")
-    cols = ["Ангилал", "Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлт гаргасан", "Хоног", "Тайлбар"]
-    header(ws3, 1, cols, [26, 13, 16, 13, 13, 17, 7, 90])
-    ws3.freeze_panes = "A2"
-    flags = []
-    for q in reqs:
-        why = []
-        if URGENT_WORDS.search(q["desc"]):
-            why.append(("Яаралтай: аюулгүй байдал", RED))
-        if norm(q["type"]) == "дуудлага":
-            why.append(("Яаралтай: дуудлага", RED))
-        if norm(q["loc"]) == "замд":
-            why.append(("Яаралтай: замд", RED))
-        if norm(q["load"]) == "ачаатай":
-            why.append(("Ачаатай", AMBER))
-        if q["days"] >= 8:
-            why.append((f"Удаж буй ({q['days']} хоног)", AMBER))
-        wo = WO_RE.findall(q["desc"])
-        if wo:
-            why.append(("WO: " + ", ".join(w.upper() for w in wo), None))
-        if q["plan"] and q["plan"].date() < q["req"].date():
-            why.append(("Алдаа: төлөвлөгөөт цаг < хүсэлтийн огноо", AMBER))
-        if q["srv"] == BLANK:
-            why.append(("Алдаа: үйлчилгээ хоосон", AMBER))
-        for label, fill in why:
-            flags.append((label, fill, q))
-    order = lambda f: (0 if f[1] is RED else 1 if f[1] is AMBER else 2, -f[2]["days"])
-    for r, (label, fill, q) in enumerate(sorted(flags, key=order), 2):
-        vals = [label, q["tech"], q["type"], q["loc"], q["srv"], q["req"].strftime("%Y-%m-%d %H:%M"), q["days"], q["desc"]]
-        for c, v in enumerate(vals, 1):
-            cell = ws3.cell(r, c, v)
-            cell.border = THIN
-            cell.alignment = Alignment(vertical="top", wrap_text=(c == 8))
-            if fill is not None and c == 1:
-                cell.fill = fill
-    ws3.auto_filter.ref = f"A1:H{max(2, len(flags) + 1)}"
-
+    for w in wb.worksheets:
+        w.sheet_view.tabSelected = w is ws0
+    wb.active = 0
     wb.save(a.out)
     json.dump({
         "requests": len(reqs), "skipped_rows": skipped, "today": str(today),
         "by_type": Counter(q["type"] for q in reqs), "by_location": Counter(q["loc"] for q in reqs),
         "by_service": Counter(q["srv"] for q in reqs), "by_day": {str(d): sum(1 for q in reqs if q["req"].date() == d) for d in days},
-        "waiting": Counter(bucket(q) for q in reqs), "flags": Counter(f[0].split(":")[0].split(" (")[0] for f in flags),
+        "waiting": Counter(bucket(q) for q in reqs), "source_sheets": src_names,
     }, sys.stdout, ensure_ascii=False, indent=1)
     print()
 
