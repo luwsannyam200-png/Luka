@@ -45,29 +45,52 @@ def num(x):
 
 
 def read_oracle_stock(path):
-    """Sum Quantity per item code for TL* and TKH* subinventories."""
-    ws = openpyxl.load_workbook(path, data_only=True, read_only=True).active
-    rows = ws.iter_rows(values_only=True)
-    ix = None
-    for r in rows:
-        names = [norm(c) for c in r]
-        if "item code" in names and "subinventory" in names and "quantity" in names:
-            ix = {k: names.index(k) for k in ("item code", "subinventory", "quantity")}
+    """Sum Quantity per item code for TL* and TKH* subinventories.
+
+    The report may sit on any sheet (a TL_TKH summary sheet is often added in
+    front of it). Without the detailed report, a summary sheet with
+    Item Code / TL / TKH columns is read as is."""
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    found = summary = None
+    for ws in wb.worksheets:
+        rows = list(ws.iter_rows(values_only=True))
+        for i, r in enumerate(rows[:30]):
+            names = [norm(c) for c in r]
+            if "item code" not in names:
+                continue
+            if "subinventory" in names and "quantity" in names:
+                found = (rows[i + 1:], {k: names.index(k) for k in ("item code", "subinventory", "quantity")})
+            elif summary is None and "tl" in names and "tkh" in names:
+                summary = (rows[i + 1:], {k: names.index(k) for k in ("item code", "tl", "tkh")})
             break
-    if ix is None:
-        sys.exit("Oracle stock file: header row with Item Code/Subinventory/Quantity not found")
+        if found:
+            break
     tl, tkh = defaultdict(float), defaultdict(float)
-    for r in rows:
-        code = r[ix["item code"]]
-        if code is None or not isinstance(r[ix["quantity"]], (int, float)):
-            continue  # wrapped description lines, totals
-        code = str(code).strip()
-        sub = str(r[ix["subinventory"]] or "").strip().upper()
-        if sub.startswith("TKH"):
-            tkh[code] += r[ix["quantity"]]
-        elif sub.startswith("TL"):
-            tl[code] += r[ix["quantity"]]
-    return tl, tkh
+    if found:
+        rows, ix = found
+        for r in rows:
+            code = r[ix["item code"]]
+            if code is None or not isinstance(r[ix["quantity"]], (int, float)):
+                continue  # wrapped description lines, totals
+            code = str(code).strip()
+            sub = str(r[ix["subinventory"]] or "").strip().upper()
+            if sub.startswith("TKH"):
+                tkh[code] += r[ix["quantity"]]
+            elif sub.startswith("TL"):
+                tl[code] += r[ix["quantity"]]
+        return tl, tkh
+    if summary:
+        rows, ix = summary
+        for r in rows:
+            code = str(r[ix["item code"]] or "").strip()
+            if not code or re.search(r"total|нийт|дүн", code, re.I):
+                continue  # totals
+            if isinstance(r[ix["tl"]], (int, float)):
+                tl[code] += r[ix["tl"]]
+            if isinstance(r[ix["tkh"]], (int, float)):
+                tkh[code] += r[ix["tkh"]]
+        return tl, tkh
+    sys.exit("Oracle stock file: header row with Item Code/Subinventory/Quantity (or Item Code/TL/TKH) not found")
 
 
 def read_supplier(path):

@@ -60,6 +60,8 @@
     var sheets = rowsOf(buf);
     var h = findHeader(sheets, ["item code", "subinventory", "quantity"]);
     if (h) return { kind: "stock", data: loadStock(h), name: name };
+    h = findSummaryHeader(sheets);
+    if (h) return { kind: "stock", data: loadStock(h), name: name };
     h = findHeader(sheets, ["засварын төрөл", "засварын байршил", "үйлчилгээ", "хүсэлт гаргасан"]);
     if (h) return { kind: "requests", data: loadRequests(h), name: name };
     h = findCatalogHeader(sheets);
@@ -67,6 +69,26 @@
     var sup = loadSupplier(sheets[0]);
     if (Object.keys(sup).length) return { kind: "supplier", data: sup, name: name };
     return { kind: "unknown", name: name };
+  }
+  /* A TL_TKH summary sheet (Item Code | Item Description | … | TL | TKH) with no
+   * Oracle detail: turn each TL / TKH cell into a row loadStock understands. */
+  function findSummaryHeader(sheets) {
+    for (var s = 0; s < sheets.length; s++) {
+      for (var i = 0; i < Math.min(sheets[s].length, 30); i++) {
+        var names = sheets[s][i].map(norm), code = names.indexOf("item code"), tl = names.indexOf("tl"), tkh = names.indexOf("tkh");
+        if (code < 0 || tl < 0 || tkh < 0) continue;
+        var en = names.indexOf("item description"), mn = names.indexOf("item mongolian description"), uom = names.indexOf("uom");
+        var rows = [["item code", "item description", "item mongolian description", "uom", "subinventory", "quantity"]];
+        sheets[s].slice(i + 1).forEach(function (r) {
+          if (r[code] == null || /total|нийт|дүн/i.test(String(r[code]))) return;
+          [["TL", tl], ["TKH", tkh]].forEach(function (w) {
+            if (typeof r[w[1]] === "number" && r[w[1]]) rows.push([r[code], en >= 0 ? r[en] : "", mn >= 0 ? r[mn] : "", uom >= 0 ? r[uom] : "", w[0], r[w[1]]]);
+          });
+        });
+        return { rows: rows, hi: 0, names: rows[0] };
+      }
+    }
+    return null;
   }
   /* Spare-part list (e.g. "2025 item.xlsx": Item дугаар | Сэлбэгийн нэр, or the
    * older Item.xlsx: Item | Description | Эдийн дугаар | Техникийн төрөл | Бүлэг). */
@@ -107,9 +129,10 @@
     h.rows.slice(h.hi + 1).forEach(function (r) {
       var code = r[c.code], q = r[c.q];
       if (code == null || typeof q !== "number") return;
+      var sub = String(r[c.sub] || "").trim(), u = sub.toUpperCase();
+      if (u.indexOf("TL") !== 0 && u.indexOf("TKH") !== 0) return; // only УХ (TL) and ЦХ (TKH) are used
       code = String(code).trim();
       var it = items[code] || (items[code] = { code: code, en: r[c.en] || "", mn: r[c.mn] || "", uom: r[c.uom] || "", subs: {}, total: 0 });
-      var sub = String(r[c.sub] || "").trim() || "?";
       var key = sub + (r[c.loc] ? " (" + r[c.loc] + ")" : "");
       it.subs[key] = (it.subs[key] || 0) + q;
       it.total += q;
@@ -341,7 +364,12 @@
         text: "**\"" + last.phrase + "\"**, зөвхөн " + locs.map(function (l) { return "**" + NAME[l] + "**: " + fmt(sums[l]); }).join(", ") + ". Нийт " + rows.length + " мөр, " + perRows.length + " сэлбэг.",
         table: table(last.answer.table.head, rows, 500),
         detailTitle: "Сэлбэг тус бүрээр:",
-        detail: table(["Item code", "Нэр"].concat(locs.map(function (l) { return NAME[l]; })), perRows.map(function (r) { return r.slice(0, 2).concat(r.slice(2).map(fmt)); }), 200),
+        // keep the contract-warehouse columns (⭐ list, supplier stock) of the full search
+        detail: table(["Item code", "Нэр"].concat(kb.catalog ? ["Гэрээт"] : []).concat(locs.map(function (l) { return NAME[l]; })).concat(Object.keys(kb.suppliers || {})),
+          perRows.map(function (r) {
+            return r.slice(0, 2).concat(kb.catalog ? [kb.catalog[r[0]] ? "⭐" : ""] : []).concat(r.slice(2).map(fmt))
+              .concat(Object.keys(kb.suppliers || {}).map(function (sn) { return fmt(kb.suppliers[sn][r[0]] || 0); }));
+          }), 200),
         exportName: last.phrase + "_" + locs.join("_")
       };
     }
@@ -475,11 +503,11 @@
     var sup = kb.suppliers || {};
     var supNames = Object.keys(sup);
     var name = function (k) { var it = stock && stock[k], c = cat && cat[k]; return (it && (it.mn || it.en)) || (c && (c.mn || c.en)) || ""; };
-    var head = ["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(stock ? ["TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"] : ["Тайлбар"]).concat(supNames);
+    var head = ["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(stock ? ["TL (УХ)", "TKH (ЦХ)"] : ["Тайлбар"]).concat(supNames);
     var rows = codes.map(function (k) {
       var it = stock && stock[k], c = cat && cat[k];
       return [k, name(k)].concat(cat ? [c ? "⭐" : ""] : [])
-        .concat(stock ? [fmt(it ? it.tl : 0), fmt(it ? it.tkh : 0), fmt(it ? it.total - it.tl - it.tkh : 0)] : [c ? c.desc : ""])
+        .concat(stock ? [fmt(it ? it.tl : 0), fmt(it ? it.tkh : 0)] : [c ? c.desc : ""])
         .concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); }));
     });
     var inCat = cat ? codes.filter(function (k) { return cat[k]; }).length : 0;
@@ -524,7 +552,7 @@
     });
     var perItem = codes.map(function (k) {
       var it = stock[k];
-      return [k, it.mn || it.en].concat(cat ? [cat[k] ? "⭐" : ""] : []).concat([fmt(it.tl), fmt(it.tkh), fmt(it.total - it.tl - it.tkh)])
+      return [k, it.mn || it.en].concat(cat ? [cat[k] ? "⭐" : ""] : []).concat([fmt(it.tl), fmt(it.tkh)])
         .concat(supNames.map(function (sn) { return fmt(sup[sn][k] || 0); }));
     }).sort(function (a, b) { return parseFloat(String(b[cat ? 3 : 2]).replace(/,/g, "")) + parseFloat(String(b[cat ? 4 : 3]).replace(/,/g, "")) - parseFloat(String(a[cat ? 3 : 2]).replace(/,/g, "")) - parseFloat(String(a[cat ? 4 : 3]).replace(/,/g, "")); });
     var extra = cat ? catHits.filter(function (k) { return !stock[k]; }) : [];
@@ -533,7 +561,7 @@
         (cat ? "\nГэрээт жагсаалтад **" + catHits.length + "**" + (extra.length ? ", үүнээс " + extra.length + " нь Oracle-ийн үлдэгдэлд алга." : ".") : ""),
       table: table(head, list, 500),
       detailTitle: "Сэлбэг тус бүрээр:",
-      detail: table(["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(["TL (УХ)", "TKH (ЦХ)", "Бусад агуулах"]).concat(supNames), perItem, 200),
+      detail: table(["Item code", "Нэр"].concat(cat ? ["Гэрээт"] : []).concat(["TL (УХ)", "TKH (ЦХ)"]).concat(supNames), perItem, 200),
       exportName: phrase
     };
   }

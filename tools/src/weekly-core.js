@@ -42,30 +42,50 @@
     return c ? c.v : undefined;
   }
 
-  /* Oracle stock: sum Quantity per item code for TL* (УХ) and TKH* (ЦХ). */
+  /* Oracle stock: sum Quantity per item code for TL* (УХ) and TKH* (ЦХ).
+   * The report may sit on any sheet (a TL_TKH summary sheet is often added in
+   * front of it). Without the detailed report, a summary sheet with
+   * Item Code / TL / TKH columns is read as is. */
   function readOracleStock(buf) {
     var wb = XLSX.read(buf, { type: "array" });
-    var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
-    var ix = null, start = 0;
-    for (var i = 0; i < rows.length; i++) {
-      var names = rows[i].map(norm);
-      if (names.indexOf("item code") >= 0 && names.indexOf("subinventory") >= 0 && names.indexOf("quantity") >= 0) {
-        ix = { code: names.indexOf("item code"), sub: names.indexOf("subinventory"), q: names.indexOf("quantity") };
-        start = i + 1;
-        break;
+    var books = wb.SheetNames.map(function (n) { return XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true, defval: null }); });
+    var found = null, summary = null;
+    books.forEach(function (rows) {
+      for (var i = 0; i < Math.min(rows.length, 30) && !found; i++) {
+        var names = rows[i].map(norm);
+        if (names.indexOf("item code") < 0) continue;
+        if (names.indexOf("subinventory") >= 0 && names.indexOf("quantity") >= 0) {
+          found = { rows: rows, start: i + 1, ix: { code: names.indexOf("item code"), sub: names.indexOf("subinventory"), q: names.indexOf("quantity") } };
+        } else if (!summary && names.indexOf("tl") >= 0 && names.indexOf("tkh") >= 0) {
+          summary = { rows: rows, start: i + 1, ix: { code: names.indexOf("item code"), tl: names.indexOf("tl"), tkh: names.indexOf("tkh") } };
+        }
       }
+    });
+    var tl = {}, tkh = {}, n = 0, j, r, code;
+    if (found) {
+      for (j = found.start; j < found.rows.length; j++) {
+        r = found.rows[j]; code = r[found.ix.code]; var q = r[found.ix.q];
+        if (code == null || typeof q !== "number") continue;
+        code = String(code).trim();
+        var sub = String(r[found.ix.sub] || "").trim().toUpperCase();
+        if (sub.indexOf("TKH") === 0) { tkh[code] = (tkh[code] || 0) + q; n++; }
+        else if (sub.indexOf("TL") === 0) { tl[code] = (tl[code] || 0) + q; n++; }
+      }
+      return { tl: tl, tkh: tkh, rows: n, source: "detail" };
     }
-    if (!ix) throw new Error("Oracle үлдэгдлийн файлд Item Code / Subinventory / Quantity гарчиг олдсонгүй");
-    var tl = {}, tkh = {}, n = 0;
-    for (var j = start; j < rows.length; j++) {
-      var r = rows[j], code = r[ix.code], q = r[ix.q];
-      if (code == null || typeof q !== "number") continue;
-      code = String(code).trim();
-      var sub = String(r[ix.sub] || "").trim().toUpperCase();
-      if (sub.indexOf("TKH") === 0) { tkh[code] = (tkh[code] || 0) + q; n++; }
-      else if (sub.indexOf("TL") === 0) { tl[code] = (tl[code] || 0) + q; n++; }
+    if (summary) {
+      for (j = summary.start; j < summary.rows.length; j++) {
+        r = summary.rows[j]; code = r[summary.ix.code];
+        if (code == null || /total|нийт|дүн/i.test(String(code)) || !String(code).trim()) continue; // skip totals
+        code = String(code).trim();
+        var a = r[summary.ix.tl], b = r[summary.ix.tkh];
+        if (typeof a === "number") tl[code] = (tl[code] || 0) + a;
+        if (typeof b === "number") tkh[code] = (tkh[code] || 0) + b;
+        n++;
+      }
+      return { tl: tl, tkh: tkh, rows: n, source: "summary" };
     }
-    return { tl: tl, tkh: tkh, rows: n };
+    throw new Error("Oracle үлдэгдлийн файлд Item Code / Subinventory / Quantity (эсвэл Item Code / TL / TKH) гарчиг олдсонгүй");
   }
 
   /* Supplier files differ in layout: take the 13-digit item code in each row
