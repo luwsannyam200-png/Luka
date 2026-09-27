@@ -1,9 +1,9 @@
 ---
-name: zasvar
-description: Засварын хүсэлтийн тайлан. Mine2TL-ээс гаргасан засварын хүсэлтийн Excel-ээс (Google Drive → "засварын хүсэлт" хавтас) байршил → үйлчилгээ, хүсэлт гаргасан өдрөөр тоолсон "Тайлан" хүснэгт, Pivot, хүлээлтийн хугацааны хүснэгт гаргана. Use when the user types /zasvar or asks for the repair request (засварын хүсэлт) report.
+name: zasvariin-huselt
+description: Засварын хүсэлтийн тайлан. Mine2TL-ээс гаргасан засварын хүсэлтийн Excel-ээс (Google Drive → "засварын хүсэлт" хавтас) байршил → үйлчилгээ, хүсэлт гаргасан өдрөөр тоолсон "Тайлан" хүснэгт, Pivot, хүлээлтийн хугацааны хүснэгт гаргана. Use when the user types /zasvariin-huselt (or /zasvar) or asks for the repair request (засварын хүсэлт) report.
 ---
 
-# /zasvar: засварын хүсэлтийн тайлан
+# /zasvariin-huselt: засварын хүсэлтийн тайлан
 
 Хэрэглэгчтэй **монгол хэлээр** харилц. Хэрэглэгч програмчлалын мэргэжилтэн биш.
 
@@ -26,7 +26,7 @@ description: Засварын хүсэлтийн тайлан. Mine2TL-ээс г
    - **Жижиг файл** (~50KB-аас бага) бол base64 хариунд шууд ирнэ. Гараар бүү хуул. Энэ тохиолдолд **Heregsel.html**-ийг ашиглахыг зөвлө (доор). Эсвэл `read_file_content`-ийн текстээс засварын төрөл, техникийн №, байршил, үйлчилгээ, тайлбар, төлөвлөгөөт цаг, ачаатай, хүсэлтийн огноог хуулж, **жолоочийн нэр, утсыг оруулахгүйгээр** ижил гарчигтай xlsx үүсгэ. Мөрийн тоо файлын төгсгөлийн нийт тоотой таарч байгааг шалга.
 3. Ажиллуул:
    ```bash
-   python3 .claude/skills/zasvar/scripts/zasvar_report.py --input input.xlsx --out "Zasvaryn_huselt_MM.DD.xlsx" [--today YYYY-MM-DD]
+   python3 .claude/skills/zasvariin-huselt/scripts/zasvar_report.py --input input.xlsx --out "Zasvaryn_huselt_MM.DD.xlsx" [--today YYYY-MM-DD]
    ```
    `--today` байхгүй бол файлын хамгийн сүүлийн хүсэлтийн өдрийг авна.
 4. **Шалга:** JSON дахь `requests`, `by_location`, `by_service`, `by_day`-ийг эх файлтай тулга. Тайлан sheet дээр мөр бүрийн нийлбэр "Хүсэлт" баганатай, "Нийт хүсэлт" нь хүсэлтийн тоотой таарах ёстой.

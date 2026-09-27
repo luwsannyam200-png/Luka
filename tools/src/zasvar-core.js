@@ -1,5 +1,5 @@
 /* Repair request report (Mine2TL export): browser + Node.
- * Port of .claude/skills/zasvar/scripts/zasvar_report.py.
+ * Port of .claude/skills/zasvariin-huselt/scripts/zasvar_report.py.
  * The export workbook is kept byte-identical; the Тайлан, Pivot and Хүлээлт
  * sheets are injected in front of it at the XML level with their own styles. */
 (function (root, factory) {
