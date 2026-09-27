@@ -44,6 +44,17 @@ def num(x):
     return str(int(x)) if x == int(x) else repr(x)
 
 
+def wh_loc(sub):
+    """Warehouse -> TL (УХ) / TKH (ЦХ). TL* and the Cyrillic "ТЛ ши" are УХ;
+    TKH* and TG_TKH-Sub are ЦХ."""
+    u = str(sub or "").strip().upper()
+    if re.search(r"(^|[_\s-])TKH", u):
+        return "TKH"
+    if re.match(r"(TL|ТЛ)", u):
+        return "TL"
+    return ""
+
+
 def read_oracle_stock(path):
     """Sum Quantity per item code for TL* and TKH* subinventories.
 
@@ -74,9 +85,9 @@ def read_oracle_stock(path):
                 continue  # wrapped description lines, totals
             code = str(code).strip()
             sub = str(r[ix["subinventory"]] or "").strip().upper()
-            if sub.startswith("TKH"):
+            if wh_loc(sub) == "TKH":
                 tkh[code] += r[ix["quantity"]]
-            elif sub.startswith("TL"):
+            elif wh_loc(sub) == "TL":
                 tl[code] += r[ix["quantity"]]
         return tl, tkh
     if summary:

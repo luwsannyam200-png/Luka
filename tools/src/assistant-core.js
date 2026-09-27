@@ -43,6 +43,14 @@
     for (i = 0; i < h.names.length; i++) if (h.names[i].indexOf(name) === 0) return i;
     return -1;
   }
+  /* Warehouse → УХ / ЦХ. TL* and the Cyrillic "ТЛ ши" are УХ; TKH* and
+   * TG_TKH-Sub are ЦХ. Anything else is not used. */
+  function whLoc(sub) {
+    var u = String(sub == null ? "" : sub).trim().toUpperCase();
+    if (/(^|[_\s-])TKH/.test(u)) return "TKH";
+    if (/^(TL|ТЛ)/.test(u)) return "TL";
+    return "";
+  }
   function fmt(n) { return Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 }); }
   function pad(n) { return String(n).padStart(2, "0"); }
   function dayKey(v) {
@@ -132,7 +140,7 @@
       var code = r[c.code], q = r[c.q];
       if (code == null || typeof q !== "number") return;
       var sub = String(r[c.sub] || "").trim(), u = sub.toUpperCase();
-      if (u.indexOf("TL") !== 0 && u.indexOf("TKH") !== 0) return; // only УХ (TL) and ЦХ (TKH) are used
+      if (!whLoc(u)) return; // only УХ (TL) and ЦХ (TKH) are used
       code = String(code).trim();
       var it = items[code] || (items[code] = { code: code, en: r[c.en] || "", mn: r[c.mn] || "", uom: r[c.uom] || "", subs: {}, total: 0 });
       var key = sub + (r[c.loc] ? " (" + r[c.loc] + ")" : "");
@@ -147,7 +155,7 @@
       it.tl = 0; it.tkh = 0;
       Object.keys(it.subs).forEach(function (s) {
         var u = s.toUpperCase();
-        if (u.indexOf("TKH") === 0) it.tkh += it.subs[s]; else if (u.indexOf("TL") === 0) it.tl += it.subs[s];
+        var w = whLoc(s.replace(/\s\(.*$/, "")); if (w === "TKH") it.tkh += it.subs[s]; else if (w === "TL") it.tl += it.subs[s];
       });
       it.search = fold(it.code + " " + it.en + " " + it.mn);
     });
@@ -272,7 +280,7 @@
     });
     var lv = /(?:^|[\s(])(?:ту|ty|tu)\s*-?\s*(\d)/.exec(q.replace(/ү/g, "у"));
     var aboutKit = /(ту|ty|tu)[\s-]?(\d|н|ний|ны|ийн)|техник(ийн)? уйлчилгээ/.test(q) && /(сэлбэг|материал|юу|ямар|хэрэг|жагсаалт|орох|kit|тос|шуур)/.test(q);
-    if (!picked.length && !aboutKit) return null;
+    if (!picked.length && (!aboutKit || ASKS.test(q))) return null;   // "ТҮ-3 гэж юу вэ" is a glossary question
     if (!picked.length) {
       if (/howo|хово/.test(q)) picked = kits.filter(function (k) { return /howo/.test(maintKey(k.name)); });
       if (!picked.length) picked = kits;
@@ -344,6 +352,8 @@
 
   /* ---------- conversation: small talk, knowledge, follow-ups ---------- */
   var GLOSSARY = [
+    [["уз", "урсгал засвар"], "**УЗ (Урсгал засвар)** нь ТҮ-3-тай хамт хийдэг, элэгдсэн эд ангийг солих төлөвлөгөөт засвар. Howo-ийн хүснэгтэд **ТҮ-3, УЗ-1 (50000)** ба **ТҮ-3, УЗ-2 (100000)** гэж орсон."],
+    [["из", "их засвар"], "**ИЗ (Их засвар)** нь машины үндсэн хэсгүүдийг задалж сэргээдэг хамгийн том төлөвлөгөөт засвар. Howo-ийн хүснэгтэд **ТҮ-3, ИЗ (200000)** гэж орсон."],
     [["ту", "техник уйлчилгээ", "техникийн уйлчилгээ"], "**ТҮ (Техник үйлчилгээ)** нь машиныг эвдрэхээс нь өмнө тогтмол давтамжтай хийдэг урьдчилан сэргийлэх үйлчилгээ. Тос, шүүр солих, тослох, тохируулах зэрэг ажил багтана. **ТҮ-1, ТҮ-2, ТҮ-3** нь явсан км эсвэл мото цагаас хамаарсан шатууд бөгөөд дугаар ихсэх тусам ажлын хүрээ өргөн болно. Давтамжийг компанийн засвар үйлчилгээний журмаар тогтоодог."],
     [["уз"], "**УЗ** нь ТҮ-тэй хамт хийгддэг нэмэлт ажлын шатыг заадаг. Жишээ нь ТҮ-3 УЗ-1. Нарийн утгыг танай засварын журмаас шалгана уу. Та туслахад `заа: УЗ гэж юу вэ = …` гэж зааж өгч болно."],
     [["wo", "work order", "ажлын захиалга"], "**WO (Work Order, ажлын захиалга)** нь ERP (Oracle)-д засварын ажлыг бүртгэдэг баримт. Ямар машинд, ямар ажил хийх, ямар сэлбэг, хэдэн цагийн хөдөлмөр орохыг бүртгэдэг. Сэлбэг агуулахаас WO-оор гардаг. ER2286811 гэх мэт дугаартай."],
@@ -496,7 +506,7 @@
     }
     if ((wantTkh || wantTl) && last.rows && !rest) {
       var locs = (wantTl ? ["TL"] : []).concat(wantTkh ? ["TKH"] : []);
-      var where = function (r) { var u = String(r[3]).toUpperCase(); return u.indexOf("TKH") === 0 ? "TKH" : u.indexOf("TL") === 0 ? "TL" : ""; };
+      var where = function (r) { return whLoc(r[3]); };
       var rows = last.rows.filter(function (r) { return locs.indexOf(where(r)) >= 0; });
       var sums = { TL: 0, TKH: 0 }, per = {};
       rows.forEach(function (r) {
@@ -693,7 +703,7 @@
     }
     var codes = uniq(rows.map(function (r) { return r.code; }));
     var tl = 0, tkh = 0;
-    rows.forEach(function (r) { var u = r.sub.toUpperCase(); if (u.indexOf("TKH") === 0) tkh += r.qty; else if (u.indexOf("TL") === 0) tl += r.qty; });
+    rows.forEach(function (r) { var w = whLoc(r.sub); if (w === "TKH") tkh += r.qty; else if (w === "TL") tl += r.qty; });
     var head = ["Item Code", "Item Mongolian Description", "UOM", "Subinventory", "Locator", "Quantity", "Supplier", "Origination date"].concat(cat ? ["Гэрээт"] : []);
     var list = rows.map(function (r) {
       return [r.code, r.mn || r.en, r.uom, r.sub, r.loc, r.qty, r.supplier, r.date].concat(cat ? [cat[r.code] ? "⭐" : ""] : []);

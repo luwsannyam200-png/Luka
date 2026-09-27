@@ -42,6 +42,15 @@
     return c ? c.v : undefined;
   }
 
+  /* Warehouse → УХ / ЦХ. TL* and the Cyrillic "ТЛ ши" are УХ; TKH* and
+   * TG_TKH-Sub are ЦХ. */
+  function whLoc(sub) {
+    var u = String(sub == null ? "" : sub).trim().toUpperCase();
+    if (/(^|[_\s-])TKH/.test(u)) return "TKH";
+    if (/^(TL|ТЛ)/.test(u)) return "TL";
+    return "";
+  }
+
   /* Oracle stock: sum Quantity per item code for TL* (УХ) and TKH* (ЦХ).
    * The report may sit on any sheet (a TL_TKH summary sheet is often added in
    * front of it). Without the detailed report, a summary sheet with
@@ -68,8 +77,9 @@
         if (code == null || typeof q !== "number") continue;
         code = String(code).trim();
         var sub = String(r[found.ix.sub] || "").trim().toUpperCase();
-        if (sub.indexOf("TKH") === 0) { tkh[code] = (tkh[code] || 0) + q; n++; }
-        else if (sub.indexOf("TL") === 0) { tl[code] = (tl[code] || 0) + q; n++; }
+        var w = whLoc(sub);
+        if (w === "TKH") { tkh[code] = (tkh[code] || 0) + q; n++; }
+        else if (w === "TL") { tl[code] = (tl[code] || 0) + q; n++; }
       }
       return { tl: tl, tkh: tkh, rows: n, source: "detail" };
     }
