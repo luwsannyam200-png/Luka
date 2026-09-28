@@ -793,7 +793,7 @@ input.wide { width: 170px; }
     if (!q.trim()) return;
     say("me", esc(q));
     var fq = AssistantCore.fold(q);
-    if (/weekly|вийкли|долоо хоног/.test(fq) && /(хий|гарга|уусгэ|шинэчл|бэлд|ажилл|эхл)/.test(fq)) {
+    if (/weekly|вийкли|долоо хоног/.test(fq) && /(хий|гарга|уусгэ|шинэчл|бэлд|ажилл|эхл)/.test(fq) && !/(хэрхэн|яаж|яах|вэ\s*\??$|бэ\s*\??$)/.test(fq)) {
       var have = ["stock"].concat(SUPKEYS).filter(function (k) { return files[k]; });
       var miss = !files.stock ? "Oracle үлдэгдлийн файл алга байна, оруулна уу. " : "";
       bot({ text: "Weekly таб руу шилжлээ. Бэлэн файлууд: " + (have.length ? have.map(function (k) { return "**" + (k === "stock" ? "Oracle үлдэгдэл" : k) + "** (" + files[k].name + ")"; }).join(", ") : "алга") + ".\n" + miss +
