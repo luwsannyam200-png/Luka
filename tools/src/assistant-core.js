@@ -751,6 +751,7 @@
     if (!stock) text += "\nOracle-ийн үлдэгдлийн файл оруулбал агуулахын тоо харагдана.";
     var res = { text: text, table: table(head, rows, 15) };
     if (codes.length === 1) {
+      res.item = codes[0];
       var one = stock && stock[codes[0]], c1 = cat && cat[codes[0]];
       if (c1) res.text += "\n⭐ Гэрээт агуулахаас авдаг сэлбэг." + (supNames.length ? "" : " Нийлүүлэгчийн файл оруулбал гэрээт агуулахын үлдэгдэл харагдана.") +
         "\n" + c1.desc + (c1.type ? " · " + c1.type : "") + (c1.group ? " · " + c1.group : "");
@@ -827,8 +828,28 @@
       table: table(["Item code", "Сэлбэг", "ТҮ-д орох"].concat(supNames), codes.map(function (c) {
         return [c, found[c].name, found[c].uses.join("; ") || "—"].concat(supNames.map(function (n) { return fmt(sup[n][c] || 0); }));
       }), 50),
-      exportName: phrase || (code && code[0])
+      exportName: phrase || (code && code[0]),
+      item: codes.length === 1 ? codes[0] : undefined
     };
+  }
+  /* Everything known about one item code, for the item card (photos and notes are added by the page). */
+  function itemInfo(code, kb) {
+    var it = kb.stock && kb.stock[code], c = kb.catalog && kb.catalog[code], sup = kb.suppliers || {};
+    var en = it ? it.en : c ? (c.en || c.desc) : "";
+    var fields = [];
+    String(en || "").split("|").forEach(function (x) { x = x.trim(); if (x && fields.indexOf(x) < 0) fields.push(x); });
+    var kits = [];
+    maintKits(kb).forEach(function (k) {
+      k.parts.forEach(function (p) {
+        if (p.code !== code) return;
+        kits.push(k.name + ": " + k.levels.map(function (l, i) { return p.qty[i] ? l.label.replace(/\s*\(.*$/, "") + " " + p.qty[i] : null; }).filter(Boolean).join(", "));
+        if (!fields.length && p.name) fields.push(p.name);
+      });
+    });
+    var suppliers = {};
+    Object.keys(sup).forEach(function (n) { if (sup[n][code] != null) suppliers[n] = sup[n][code]; });
+    return { code: code, name: (it && (it.mn || it.en)) || (c && (c.mn || c.desc)) || "", fields: fields, uom: it ? it.uom : "",
+      tl: it ? it.tl : null, tkh: it ? it.tkh : null, contract: !!c, suppliers: suppliers, kits: kits };
   }
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
   function notUnderstood(kb) {
@@ -892,5 +913,5 @@
     };
   }
 
-  return { load: load, answer: answer, searchFiles: searchFiles, fold: fold, plateKey: plateKey, customKey: customKey, HELP: HELP };
+  return { load: load, answer: answer, searchFiles: searchFiles, itemInfo: itemInfo, fold: fold, plateKey: plateKey, customKey: customKey, HELP: HELP };
 });

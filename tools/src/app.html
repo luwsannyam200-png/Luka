@@ -92,6 +92,14 @@ input.wide { width: 170px; }
 .kb .row input { flex: 1 1 180px; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); min-width: 0; }
 .kb td, .kb th { text-align: left; white-space: normal; }
 .kb td.act { white-space: nowrap; width: 1%; }
+.card { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.card textarea { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); resize: vertical; }
+.photos { display: flex; gap: 8px; flex-wrap: wrap; }
+.photos figure { position: relative; margin: 0; }
+.photos img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); cursor: zoom-in; display: block; }
+.photos .x { position: absolute; top: 4px; right: 4px; border: 0; border-radius: 50%; width: 24px; height: 24px; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
+.lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
 [hidden] { display: none !important; }
 @media (max-width: 640px) { .slot { grid-template-columns: 1fr auto; } .slot .file { grid-column: 1 / -1; } .tabs { grid-template-columns: 1fr; } }
 </style>
@@ -199,8 +207,8 @@ input.wide { width: 170px; }
   <div id="tool-chat" hidden>
     <section class="panel">
       <h2>Файлууд</h2>
-      <div class="drop" id="c-drop"><b>Ямар ч Excel файл</b> (Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт, гэрээт жагсаалт, бусад) энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Танигдаагүй файлаас ч хайсан үгээ Excel-ийн filter шиг мөрөөр нь олно. Бусад табад оруулсан файлыг автоматаар ашиглана. Нэг оруулсан файлыг дараа нээхэд дахин оруулах шаардлагагүй, энэ компьютерт хадгалагдана.</small></div>
-      <input type="file" id="c-files" multiple accept=".xlsx,.xls" hidden>
+      <div class="drop" id="c-drop"><b>Ямар ч Excel файл</b> (Oracle үлдэгдэл, нийлүүлэгч, засварын хүсэлт, гэрээт жагсаалт, бусад) эсвэл кодоор нэрлэсэн <b>сэлбэгийн зураг</b> (4016150400048.jpg) энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Танигдаагүй файлаас ч хайсан үгээ Excel-ийн filter шиг мөрөөр нь олно. Бусад табад оруулсан файлыг автоматаар ашиглана. Нэг оруулсан файлыг дараа нээхэд дахин оруулах шаардлагагүй, энэ компьютерт хадгалагдана.</small></div>
+      <input type="file" id="c-files" multiple accept=".xlsx,.xls,image/*" hidden>
       <div class="chips" id="c-sources"></div>
     </section>
     <section class="panel">
@@ -678,14 +686,17 @@ input.wide { width: 170px; }
   var SUP = ["Parts and oil", "Очлуур од", "AODE"];
   /* Files given to the assistant are kept in this browser (IndexedDB holds tens of MB,
      localStorage only ~5 MB), so the next visit works without adding them again. */
-  function idb(mode, fn) {
+  function idb(mode, fn, store) {
+    store = store || "files";
     return new Promise(function (ok, fail) {
       if (!window.indexedDB) return fail(new Error("no indexedDB"));
-      var rq = indexedDB.open("heregsel", 1);
-      rq.onupgradeneeded = function () { rq.result.createObjectStore("files"); };
+      var rq = indexedDB.open("heregsel", 2);   // v2 adds item photos
+      rq.onupgradeneeded = function () {
+        ["files", "photos"].forEach(function (n) { if (!rq.result.objectStoreNames.contains(n)) rq.result.createObjectStore(n); });
+      };
       rq.onerror = function () { fail(rq.error); };
       rq.onsuccess = function () {
-        var db = rq.result, tx = db.transaction("files", mode), r = fn(tx.objectStore("files"));
+        var db = rq.result, tx = db.transaction(store, mode), r = fn(tx.objectStore(store));
         tx.oncomplete = function () { db.close(); ok(r && r.result); };
         tx.onerror = function () { db.close(); fail(tx.error); };
       };
@@ -714,6 +725,7 @@ input.wide { width: 170px; }
   }
   function feed(f, hint) {
     if (hint === "draft") return;
+    if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name)) { photoByName(f); return; }
     read(f).then(function (buf) { use(f.name, buf, hint, true); })
       .catch(function (e) { bot({ text: "**" + f.name + "** файлыг уншиж чадсангүй: " + (e && e.message ? e.message : e) }); });
   }
@@ -779,7 +791,70 @@ input.wide { width: 170px; }
       };
       $("c-log").lastChild.appendChild(b);
     }
+    if (a.item) itemCard($("c-log").lastChild, a.item);
     if (a.examples) setExamples(a.examples);
+  }
+  /* ---- item card: info, your photos and your note (this browser only) ---- */
+  function notes() { try { return JSON.parse(localStorage.getItem("itemNotes") || "{}"); } catch (e) { return {}; } }
+  function saveNote(code, text) {
+    var n = notes(); if (text.trim()) n[code] = text; else delete n[code];
+    try { localStorage.setItem("itemNotes", JSON.stringify(n)); } catch (e) { /* storage unavailable */ }
+  }
+  function getPhotos(code) { return idb("readonly", function (st) { return st.get(code); }, "photos").then(function (v) { return v || []; }).catch(function () { return []; }); }
+  function setPhotos(code, list) { return idb("readwrite", function (st) { return list.length ? st.put(list, code) : st.delete(code); }, "photos"); }
+  async function addPhotos(code, fileList) {
+    var list = await getPhotos(code);
+    for (var i = 0; i < fileList.length; i++) list.push({ name: fileList[i].name, type: fileList[i].type || "image/jpeg", buf: await read(fileList[i]) });
+    await setPhotos(code, list);
+  }
+  function photoByName(f) {
+    var m = /\d{13}/.exec(f.name);
+    if (!m) { bot({ text: "**" + f.name + "**: зургийн нэрэнд 13 оронтой Item code алга. Зургаа `4016150400048.jpg` гэх мэт кодоор нэрлээд оруулна уу, эсвэл сэлбэгээ асуугаад картан дээрх **📷 Зураг нэмэх** товчийг ашиглана уу." }); return; }
+    addPhotos(m[0], [f]).then(function () { bot({ text: "📷 **" + m[0] + "** сэлбэгт зураг нэмлээ (" + f.name + ")." }); })
+      .catch(function () { bot({ text: "Зургийг хадгалж чадсангүй. Хөтөч хадгалах санг хаасан байж магадгүй." }); });
+  }
+  function lightbox(url) {
+    var d = document.createElement("div"); d.className = "lightbox"; d.innerHTML = '<img alt="">'; d.firstChild.src = url;
+    d.onclick = function () { d.remove(); }; document.body.appendChild(d);
+  }
+  function itemCard(box, code) {
+    var info = AssistantCore.itemInfo(code, kb);
+    var card = document.createElement("div"); card.className = "card";
+    var lines = [];
+    if (info.fields.length) lines.push("<b>Тайлбар:</b> " + info.fields.map(esc).join(" · "));
+    if (info.tl != null) lines.push("<b>Үлдэгдэл:</b> УХ " + info.tl + ", ЦХ " + info.tkh + (info.uom ? " " + esc(info.uom) : ""));
+    var sn = Object.keys(info.suppliers);
+    if (sn.length) lines.push("<b>Нийлүүлэгч:</b> " + sn.map(function (n) { return esc(n) + " " + info.suppliers[n]; }).join(", "));
+    if (info.contract) lines.push("⭐ Гэрээт агуулахаас авдаг");
+    if (info.kits.length) lines.push("<b>ТҮ-д орох:</b> " + info.kits.map(esc).join("; "));
+    card.innerHTML = '<div class="photos"></div><div class="sub" style="margin:6px 0">' + lines.join("<br>") + "</div>" +
+      '<textarea rows="2" placeholder="📝 Энэ сэлбэгийн тэмдэглэл (жишээ нь: Howo 371-д тохирно, VG1540080311)"></textarea>' +
+      '<div class="row" style="margin-top:6px"><button type="button" class="btn">📷 Зураг нэмэх</button><input type="file" accept="image/*" multiple hidden><span class="sub" style="margin:0"></span></div>';
+    var ta = card.querySelector("textarea"), btn = card.querySelector("button"), inp = card.querySelector("input"), msg = card.querySelector(".row .sub");
+    ta.value = notes()[code] || "";
+    ta.onchange = function () { saveNote(code, ta.value); msg.textContent = "Тэмдэглэл хадгалагдлаа."; };
+    btn.onclick = function () { inp.click(); };
+    inp.onchange = function () {
+      var fl = Array.prototype.slice.call(inp.files); inp.value = "";
+      addPhotos(code, fl).then(function () { msg.textContent = fl.length + " зураг нэмлээ."; show(); }).catch(function () { msg.textContent = "Зургийг хадгалж чадсангүй."; });
+    };
+    function show() {
+      getPhotos(code).then(function (list) {
+        var box2 = card.querySelector(".photos"); box2.innerHTML = "";
+        list.forEach(function (ph, i) {
+          var url = URL.createObjectURL(new Blob([ph.buf], { type: ph.type }));
+          var fig = document.createElement("figure"); fig.innerHTML = '<img alt=""><button type="button" class="x" title="Устгах">×</button>';
+          fig.firstChild.src = url; fig.firstChild.alt = ph.name; fig.firstChild.onclick = function () { lightbox(url); };
+          fig.lastChild.onclick = function () {
+            if (!confirm("Энэ зургийг устгах уу?")) return;
+            list.splice(i, 1); setPhotos(code, list).then(show);
+          };
+          box2.appendChild(fig);
+        });
+      });
+    }
+    show();
+    box.appendChild(card);
   }
   function setExamples(list) {
     $("c-examples").innerHTML = "";
@@ -852,7 +927,7 @@ input.wide { width: 170px; }
   };
   $("k-user-save").onclick = function () { kb.user = $("k-user").value.trim() || null; saveKb(); $("k-msg").textContent = "Нэр хадгалагдлаа."; };
   $("k-export").onclick = function () {
-    var blob = new Blob([JSON.stringify({ app: "Heregsel", version: 1, saved: new Date().toISOString(), user: kb.user || null, custom: kb.custom || {} }, null, 2)], { type: "application/json" });
+    var blob = new Blob([JSON.stringify({ app: "Heregsel", version: 1, saved: new Date().toISOString(), user: kb.user || null, custom: kb.custom || {}, notes: notes() }, null, 2)], { type: "application/json" });
     var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "medlegiin_san_" + new Date().toISOString().slice(0, 10) + ".json";
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   };
@@ -872,6 +947,7 @@ input.wide { width: 170px; }
         kb.custom[k] = { q: v.q, a: v.a };
       });
       if (!kb.user && d.user) kb.user = d.user;
+      if (d.notes && typeof d.notes === "object") { var n = notes(); Object.keys(d.notes).forEach(function (c) { if (!n[c]) n[c] = d.notes[c]; }); try { localStorage.setItem("itemNotes", JSON.stringify(n)); } catch (e) { /* ignore */ } }
       saveKb();
       $("k-msg").textContent = "Сэргээлээ: " + added + " шинэ, " + changed + " шинэчилсэн.";
     }).catch(function (e) { $("k-msg").textContent = "Уншиж чадсангүй: " + (e && e.message ? e.message : e); });
