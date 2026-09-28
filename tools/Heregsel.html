@@ -2273,7 +2273,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       el.innerHTML = '<div class="label"></div><div class="file"></div><div class="row"></div>';
       el.children[0].textContent = s.label;
       var small = document.createElement("small"); small.textContent = s.hint; el.children[0].appendChild(small);
-      el.children[1].textContent = f ? f.name : "сонгоогүй";
+      el.children[1].textContent = f ? f.name + (f.restored ? " (хадгалсан)" : "") : "сонгоогүй";
       if (f) el.children[1].classList.add("set");
       var pick = document.createElement("button"); pick.className = "btn"; pick.textContent = "Сонгох";
       var inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls"; inp.hidden = true;
@@ -2337,6 +2337,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     } else if (SUPKEYS.indexOf(want) >= 0 && isStock) {
       key = "stock";
       show("w-result", "warn", "<b>" + esc(f.name) + "</b> нь Oracle-ийн үлдэгдэл байна. \"Oracle үлдэгдэл\" мөрөнд шилжүүллээ.", true);
+    } else if (SUPKEYS.indexOf(want) >= 0 && isSup && supplierByName(f.name) && supplierByName(f.name) !== want) {
+      key = supplierByName(f.name);
+      show("w-result", "warn", "<b>" + esc(f.name) + "</b> нь " + esc(key) + "-ийн файл байна. " + esc(key) + " мөрөнд шилжүүллээ.", true);
     } else if (SUPKEYS.indexOf(want) >= 0 && !isSup) {
       show("w-result", "bad", "<b>" + esc(f.name) + "</b> файлаас 13 оронтой кодтой мөр олдсонгүй. Нийлүүлэгчийн үлдэгдлийн файл мөн эсэхийг шалгана уу.", true);
       return;
@@ -2665,6 +2668,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       forget.onclick = function () {
         ["stock", "requests", "catalog"].forEach(function (k) { delete kb[k]; });
         kb.suppliers = {}; kb.files = {}; sources = {}; forgot = true;
+        Object.keys(files).forEach(function (k) { if (files[k].restored) delete files[k]; }); renderSlots();
         try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ }
         idb("readwrite", function (st) { return st.clear(); }).catch(function () { /* ignore */ });
         renderSources();
@@ -2683,16 +2687,27 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     else if (r.kind === "requests") label = "Засварын хүсэлт";
     else if (r.kind === "catalog") label = "Гэрээт сэлбэг";
     else if (r.kind === "maint") label = "ТҮ-ний сэлбэг";
-    else if (r.kind === "supplier") label = sup = SUP.indexOf(hint) >= 0 ? hint : /очлуур|ochluur/i.test(name) ? "Очлуур од" : /aode|аодэ/i.test(name) ? "AODE" : "Parts and oil";
+    else if (r.kind === "supplier") label = sup = supplierByName(name) || (SUP.indexOf(hint) >= 0 ? hint : "Parts and oil");
     else label = "Файл · " + name;   // any other file: searched cell by cell
-    if (label && !fresh && sources[label] && !/хадгалсан\)$/.test(sources[label])) return; // added this session: keep it
+    if (label && !fresh && sources[label] && !/хадгалсан\)$/.test(sources[label])) return label; // added this session: keep it
     if (sup) kb.suppliers[sup] = r.data; else if (r.kind !== "unknown") kb[r.kind] = r.data;
     kb.files = kb.files || {};
     kb.files[label] = { name: name, kind: r.kind, sheets: r.raw };
     if (r.kind === "unknown" && fresh && hint === undefined) bot({ text: "**" + name + "**-ийг хайлтад нэмлээ. Одоо энэ файлаас дурын үгээр хайж болно." });
     sources[label] = fresh ? name : name + " (хадгалсан)";
     if (fresh) keep(label, name, buf, hint);
+    // the Weekly tab takes the same Oracle and supplier files
+    if (r.kind === "stock" || sup) {
+      var wkey = sup || "stock";
+      if (!files[wkey] || files[wkey].restored || fresh) {
+        var wf = fresh && files[wkey] && files[wkey].name === name ? files[wkey] : new File([buf], name);
+        if (!fresh) wf.restored = true;
+        files[wkey] = wf;
+        renderSlots();
+      }
+    }
     renderSources();
+    return label;
   }
   wireDrop("c-drop", "c-files", function (list) { Array.prototype.forEach.call(list, function (f) { feed(f); }); });
   function md(t) { return esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>"); }
@@ -2741,6 +2756,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function ask(q) {
     if (!q.trim()) return;
     say("me", esc(q));
+    var fq = AssistantCore.fold(q);
+    if (/weekly|вийкли|долоо хоног/.test(fq) && /(хий|гарга|уусгэ|шинэчл|бэлд|ажилл|эхл)/.test(fq)) {
+      var have = ["stock"].concat(SUPKEYS).filter(function (k) { return files[k]; });
+      var miss = !files.stock ? "Oracle үлдэгдлийн файл алга байна, оруулна уу. " : "";
+      bot({ text: "Weekly таб руу шилжлээ. Бэлэн файлууд: " + (have.length ? have.map(function (k) { return "**" + (k === "stock" ? "Oracle үлдэгдэл" : k) + "** (" + files[k].name + ")"; }).join(", ") : "алга") + ".\n" + miss +
+        (files.draft ? "Weekly draft бэлэн. \"Үүсгэх\" дарна уу." : "Одоо **Weekly draft**-аа (өмнөх долоо хоногийн, N/O/P-г засварласан хувилбараа) оруулаад \"Үүсгэх\" дарна уу.") });
+      $("c-input").value = "";
+      choose("weekly"); location.hash = "#weekly";
+      return;
+    }
     try {
       var a = AssistantCore.answer(q, kb);
       // nothing found by the dedicated answers: search every loaded file like Excel's filter
@@ -2826,11 +2851,27 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     if (saved && saved.data) { kb.catalog = saved.data; sources["Гэрээт сэлбэг"] = saved.name + " (хадгалсан)"; }
   } catch (e) { /* storage unavailable */ }
   renderSources();
-  idb("readonly", function (st) { return st.getAll(); }).then(function (all) {
+  idb("readonly", function (st) {
+    // entries with their keys (the label they were saved under)
+    var out = [], req = st.openCursor();
+    req.onsuccess = function () { var c = req.result; if (c) { var v = c.value; v.key = c.key; out.push(v); c.continue(); } };
+    return { get result() { return out; } };
+  }).then(function (all) {
+    var fixed = {}, moved = false;
     (all || []).forEach(function (x) {
       // a file added in this session already wins over the stored one
-      try { if (x && x.buf && !forgot) use(x.name, x.buf, x.hint, false); } catch (e) { /* skip a damaged entry */ }
+      try {
+        if (!x || !x.buf || forgot) return;
+        var label = use(x.name, x.buf, x.hint, false) || x.key;
+        if (label !== x.key) moved = true;
+        if (!fixed[label] || (x.saved || 0) > (fixed[label].saved || 0)) fixed[label] = x;
+      } catch (e) { /* skip a damaged entry */ }
     });
+    // an older version could file a supplier under the slot it was dropped in: re-save by the right labels at once
+    if (moved && !forgot) idb("readwrite", function (st) {
+      st.clear();
+      Object.keys(fixed).forEach(function (l) { var x = fixed[l]; st.put({ name: x.name, buf: x.buf, hint: x.hint, saved: x.saved }, l); });
+    }).catch(function () {});
   }).catch(function () { /* storage unavailable */ });
   renderKb();
   bot({ text: "Сайн байна уу" + (kb.user ? ", " + kb.user : "") + "! Би оруулсан файлуудаас сэлбэгийн үлдэгдэл, эдийн дугаар, засварын хүсэлтийг хайж, засварын нэр томьёог тайлбарлана. Энгийнээр ярилцаж ч болно. Интернэтгүй ажилладаг.", examples: AssistantCore.HELP.examples });
