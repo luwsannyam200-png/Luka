@@ -218,11 +218,11 @@ input.wide { width: 170px; }
       <form class="ask" id="c-form"><input id="c-input" autocomplete="off" placeholder="Жишээ нь: маслын шүүр хэд байна"><button class="btn primary" type="submit">Асуух</button></form>
       <details class="kb" id="k-box">
         <summary>📚 Миний мэдлэгийн сан (<span id="k-count">0</span>)</summary>
-        <p class="sub" style="margin:6px 0">Зөвхөн энэ компьютерийн энэ хөтөчид хадгалагдана. Бусад хүн харахгүй. Хөтчийн түүхийг цэвэрлэвэл устах тул <b>Нөөцлөх</b> товчоор файл болгож хадгалаарай.</p>
+        <p class="sub" style="margin:6px 0">Зөвхөн энэ компьютерийн энэ хөтөчид хадгалагдана. Бусад хүн харахгүй. Хөтчийн түүхийг цэвэрлэвэл устах тул <b>🗂 Архив татах</b> товчоор зураг, тэмдэглэл, мэдлэгээ нэг ZIP файл болгож хадгалаарай. Шинэ компьютерт <b>⬆ Архив / нөөцөөс сэргээх</b>-ээр буцааж оруулна.</p>
         <div class="row"><input id="k-user" placeholder="Таны нэр (мэндчилгээнд)"><button class="btn" type="button" id="k-user-save">Нэр хадгалах</button></div>
         <form class="row" id="k-form"><input id="k-q" placeholder="Асуулт, жишээ нь: ЗБН гэж юу вэ" required><input id="k-a" placeholder="Хариулт" required><button class="btn primary" type="submit" id="k-submit">Нэмэх</button><button class="btn" type="button" id="k-cancel" hidden>Болих</button></form>
         <div class="tablewrap"><table><thead><tr><th>Асуулт</th><th>Хариулт</th><th></th></tr></thead><tbody id="k-list"></tbody></table></div>
-        <div class="row"><button class="btn" type="button" id="k-export">⬇ Нөөцлөх (файл)</button><button class="btn" type="button" id="k-import">⬆ Нөөцөөс сэргээх</button><input type="file" id="k-file" accept=".json,application/json" hidden></div>
+        <div class="row"><button class="btn primary" type="button" id="k-archive">🗂 Архив татах (зураг + тэмдэглэл + мэдлэг)</button><button class="btn" type="button" id="k-export">⬇ Зөвхөн мэдлэг (json)</button><button class="btn" type="button" id="k-import">⬆ Архив / нөөцөөс сэргээх</button><input type="file" id="k-file" accept=".zip,.json,application/json,application/zip" hidden></div>
         <div class="sub" id="k-msg" style="margin:0"></div>
       </details>
     </section>
@@ -1724,6 +1724,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     [/засварын мэдээ|мэдээ/, "**📋 Засварын мэдээ хэрхэн хийх вэ**\n1. **📋 Засварын мэдээ** таб руу орно.\n2. Mine2TL-ээс гаргасан мэдээний Excel-ээ (\"Хэсгийн №\" баганатай) чирж оруулна.\n3. **Шалгаж батлах**: Дуудлага болон \"Замд\" мөрийн механик бүрийн байршлыг (Ухаа худаг / Цагаан хад) шалгана. Файлаас автоматаар танина, буруу бол сонголтыг солино.\n4. **ТҮ-ний санал** гарвал зөв бол чагтална.\n5. Дуусах цаг (эхний дууссан мөрийн өдрийн 06:00), файлын нэрийг шалгаад **Боловсруулах** → **Татаж авах**.\n\nЯмар алхам хийдэг вэ: \"Хэсгийн №\" устгана → Дуудлага, Замд-ыг механикийн байршлаар → Төлөвлөгөөт → жолоочгүй бол Ачигч → нийт дүнгийн мөр хасна → цэнхэр (дуусаагүй) мөр эхэнд, 06:00 хүртэл бодно → Дууссан огноо = зарцуулсан цаг, Засварын код = хүлээсэн цаг, Машины төлөв = нийт цаг.\nТомьёо, мөр бүрт юу өөрчлөгдсөнийг **📖 Тайлбар** товчоор татаж харна.\n⚠ Татсан файл дээр томьёо дахин бичвэл Excel хүснэгт бүх мөрөнд тарааж, цэнхэр мөрүүдийг эвддэг."],
     [/засварын хусэлт|хусэлт/, "**🔧 Засварын хүсэлт хэрхэн хийх вэ**\n1. **🔧 Засварын хүсэлт** таб руу орно.\n2. Mine2TL-ээс гаргасан хүсэлтийн Excel-ээ оруулна.\n3. Хүлээлтийг тоолох өдөр: хоосон бол файлын хамгийн сүүлийн өдөр.\n4. **Үүсгэх** → **Татаж авах**. Файлд Тайлан (байршил → үйлчилгээ, өдрөөр), Pivot, Хүлээлт (0 / 1–3 / 4–7 / 8+ хоног) sheet нэмэгдэнэ.\nХэрхэн тоолсныг **📖 Тайлбар**-аас харна."],
     [/weekly|вийкли|долоо хоног/, "**📦 Weekly хэрхэн хийх вэ**\n1. **📦 Weekly үлдэгдэл** таб (эсвэл энд \"weekly хийе\" гэж бичнэ).\n2. Oracle үлдэгдэл, нийлүүлэгчийн (Parts and oil, Очлуур од, AODE) файлууд хадгалагдсан бол автоматаар тавигдана. Байхгүй бол чирж оруулна. Файлыг агуулгаар нь шалгаж зөв мөрөнд тавина.\n3. **Weekly draft**-аа (N/O/P-г засварласан сүүлийн хувилбар) оруулна.\n4. Sheet-ийн нэр (огноо) → **Үүсгэх** → **Татаж авах**.\nУХ = TL…, ТЛ… агуулах; ЦХ = TKH…, …_TKH… агуулах. Бусад агуулах орохгүй. Томьёо, сэлбэг бүр аль агуулахаас ирснийг **📖 Тайлбар**-аас харна."],
+    [/архив|нооц|татах|хадгала|шилжүүл/, "**🗂 Архив (нөөц) татах**\n1. Туслах табын доод талын **📚 Миний мэдлэгийн сан** дээр дарж нээнэ.\n2. **🗂 Архив татах (зураг + тэмдэглэл + мэдлэг)** товч дарна.\n3. `heregsel_arkhiv_ОГНОО.zip` файл татагдана. Дотор нь: **zurag/** хавтас (бүх зураг, кодоор нэрлэсэн), **items.xlsx** (сэлбэг, нэр, тэмдэглэл, зургийн тоо), **medleg.json** (заасан хариултууд, тэмдэглэл).\n\n**Сэргээх / шинэ компьютерт:** мөн тэр хэсгийн **⬆ Архив / нөөцөөс сэргээх** → zip файлаа сонгоно. Давхардсан зургийг дахин нэмэхгүй."],
     [/зураг|тэмдэглэл/, "**📷 Сэлбэгт зураг нэмэх**\n1. Сэлбэгээ **13 оронтой кодоор** асууна (жишээ нь `4016150400048`). Ганц сэлбэг олдоход хариуны доор **сэлбэгийн карт** гарна.\n2. Карт дээрх **📷 Зураг нэмэх** товч → компьютер эсвэл утаснаасаа зураг сонгоно (олныг зэрэг сонгож болно).\n3. Дараа нь тэр сэлбэгийг асуух бүрт зураг гарна. Зураг дээр дарвал томорно, × дарвал устгана.\n\n**Олон зургийг нэг дор:** зургуудаа сэлбэгийн кодоор нэрлээд (`4016150400048.jpg`) энэ табын файл оруулах хэсэгт чирнэ.\n**Тэмдэглэл:** картын 📝 нүдэнд бичээд гадна дарахад хадгалагдана.\nКарт гарахгүй бол эхлээд Oracle-ийн үлдэгдлийн файлаа оруулна уу."],
     [/мэдлэгийн сан|заах|заа\b/, "**📚 Мэдлэгийн сан**\nЧатад `заа: асуулт = хариулт` гэж бичих, эсвэл доорх 📚 хэсгийг нээж Асуулт, Хариулт бичээд **Нэмэх**. Засах, устгах, нөөцлөх (файл), сэргээх боломжтой. Зөвхөн энэ компьютерт хадгалагдана."],
     [/туслах|чат|хайх|хайлт/, "**💬 Туслах**\nФайлаа (ямар ч Excel) дээд хэсэгт оруулна, нэг удаа оруулахад хадгалагдана. Дараа нь: сэлбэгийн нэр (`агаар шүүгч`), 13 оронтой код, машины дугаар (`5840ӨМА`), `зөвхөн ЦХ`, `Howo 371 ТҮ-2`, `... гэж юу вэ`, дурын үг (`24.00R35`) гэж асууна. Хүснэгтийг **⬇ Excel болгож татах** боломжтой."]
@@ -2933,25 +2934,95 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   };
   $("k-import").onclick = function () { $("k-file").click(); };
-  $("k-file").onchange = function () {
+  /* one knowledge backup object: {custom, notes, user} merged into this browser */
+  function mergeKnowledge(d) {
+    var added = 0, changed = 0;
+    if (!d || typeof d.custom !== "object") throw new Error("мэдлэгийн сангийн нөөц файл биш байна");
+    kb.custom = kb.custom || {};
+    Object.keys(d.custom).forEach(function (x) {
+      var v = d.custom[x];
+      if (!v || typeof v.q !== "string" || typeof v.a !== "string") return;
+      var k = AssistantCore.customKey(v.q);
+      if (!kb.custom[k]) added++; else if (kb.custom[k].a !== v.a) changed++; else return;
+      kb.custom[k] = { q: v.q, a: v.a };
+    });
+    if (!kb.user && d.user) kb.user = d.user;
+    var nn = 0;
+    if (d.notes && typeof d.notes === "object") {
+      var n = notes(); Object.keys(d.notes).forEach(function (c) { if (!n[c] && d.notes[c]) { n[c] = d.notes[c]; nn++; } });
+      try { localStorage.setItem("itemNotes", JSON.stringify(n)); } catch (e) { /* ignore */ }
+    }
+    saveKb();
+    return { added: added, changed: changed, notes: nn };
+  }
+  function allPhotos() {
+    return idb("readonly", function (st) {
+      var out = {}, req = st.openCursor();
+      req.onsuccess = function () { var c = req.result; if (c) { out[c.key] = c.value; c.continue(); } };
+      return { get result() { return out; } };
+    }, "photos").catch(function () { return {}; });
+  }
+  var EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/bmp": "bmp" };
+  /* 🗂 archive: zurag/<code>_<n>.<ext> + items.xlsx + medleg.json in one zip */
+  $("k-archive").onclick = async function () {
+    $("k-msg").textContent = "Архив бэлдэж байна…";
+    try {
+      var photos = await allPhotos(), nt = notes(), zip = new JSZip(), nPh = 0;
+      var codes = Object.keys(photos).concat(Object.keys(nt)).filter(function (c, i, a) { return a.indexOf(c) === i; }).sort();
+      var rows = [["Item code", "Нэр", "Тэмдэглэл", "Зургийн тоо", "Зургийн файлууд"]];
+      codes.forEach(function (code) {
+        var list = photos[code] || [], names = [];
+        list.forEach(function (ph, i) {
+          var ext = EXT[ph.type] || (/\.(\w+)$/.exec(ph.name || "") || [0, "jpg"])[1];
+          var fn = code + "_" + (i + 1) + "." + ext;
+          zip.file("zurag/" + fn, ph.buf); names.push(fn); nPh++;
+        });
+        var info = AssistantCore.itemInfo(code, kb);
+        rows.push([code, info.name || (info.fields[0] || ""), nt[code] || "", list.length, names.join(", ")]);
+      });
+      var wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(rows);
+      ws["!cols"] = [{ wch: 16 }, { wch: 40 }, { wch: 50 }, { wch: 10 }, { wch: 60 }];
+      XLSX.utils.book_append_sheet(wb, ws, "Сэлбэгүүд");
+      zip.file("items.xlsx", XLSX.write(wb, { type: "array", bookType: "xlsx" }));
+      zip.file("medleg.json", JSON.stringify({ app: "Heregsel", version: 2, saved: new Date().toISOString(), user: kb.user || null, custom: kb.custom || {}, notes: nt }, null, 2));
+      var blob = await zip.generateAsync({ type: "blob" });
+      var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "heregsel_arkhiv_" + new Date().toISOString().slice(0, 10) + ".zip";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+      $("k-msg").textContent = "Архив татагдлаа: " + codes.length + " сэлбэг, " + nPh + " зураг, " + Object.keys(kb.custom || {}).length + " заасан хариулт.";
+    } catch (e) { $("k-msg").textContent = "Архив үүсгэж чадсангүй: " + (e && e.message ? e.message : e); }
+  };
+  $("k-file").onchange = async function () {
     var f = this.files[0]; this.value = "";
     if (!f) return;
-    f.text().then(function (txt) {
-      var d = JSON.parse(txt), added = 0, changed = 0;
-      if (!d || typeof d.custom !== "object") throw new Error("мэдлэгийн сангийн нөөц файл биш байна");
-      kb.custom = kb.custom || {};
-      Object.keys(d.custom).forEach(function (x) {
-        var v = d.custom[x];
-        if (!v || typeof v.q !== "string" || typeof v.a !== "string") return;
-        var k = AssistantCore.customKey(v.q);
-        if (!kb.custom[k]) added++; else if (kb.custom[k].a !== v.a) changed++; else return;
-        kb.custom[k] = { q: v.q, a: v.a };
-      });
-      if (!kb.user && d.user) kb.user = d.user;
-      if (d.notes && typeof d.notes === "object") { var n = notes(); Object.keys(d.notes).forEach(function (c) { if (!n[c]) n[c] = d.notes[c]; }); try { localStorage.setItem("itemNotes", JSON.stringify(n)); } catch (e) { /* ignore */ } }
-      saveKb();
-      $("k-msg").textContent = "Сэргээлээ: " + added + " шинэ, " + changed + " шинэчилсэн.";
-    }).catch(function (e) { $("k-msg").textContent = "Уншиж чадсангүй: " + (e && e.message ? e.message : e); });
+    try {
+      if (/\.json$/i.test(f.name)) {
+        var r = mergeKnowledge(JSON.parse(await f.text()));
+        $("k-msg").textContent = "Сэргээлээ: " + r.added + " шинэ, " + r.changed + " шинэчилсэн хариулт, " + r.notes + " тэмдэглэл.";
+        return;
+      }
+      $("k-msg").textContent = "Архив уншиж байна…";
+      var zip = await JSZip.loadAsync(await read(f)), r2 = { added: 0, changed: 0, notes: 0 }, byCode = {}, added = 0;
+      var mj = zip.file(/medleg\.json$/i)[0];
+      if (mj) r2 = mergeKnowledge(JSON.parse(await mj.async("string")));
+      var imgs = zip.file(/\.(jpe?g|png|webp|gif|bmp)$/i);
+      for (var i = 0; i < imgs.length; i++) {
+        var m = /(\d{13})/.exec(imgs[i].name.split("/").pop());
+        if (!m) continue;
+        var ext = /\.(\w+)$/.exec(imgs[i].name)[1].toLowerCase();
+        (byCode[m[1]] = byCode[m[1]] || []).push({ name: imgs[i].name.split("/").pop(), type: "image/" + (ext === "jpg" ? "jpeg" : ext), buf: await imgs[i].async("uint8array") });
+      }
+      var codes = Object.keys(byCode);
+      for (var j = 0; j < codes.length; j++) {
+        var have = await getPhotos(codes[j]);
+        byCode[codes[j]].forEach(function (ph) {
+          // skip a photo that is already there (same size and bytes)
+          var dup = have.some(function (h) { if (h.buf.length !== ph.buf.length) return false; for (var k = 0; k < h.buf.length; k += 997) if (h.buf[k] !== ph.buf[k]) return false; return true; });
+          if (!dup) { have.push(ph); added++; }
+        });
+        await setPhotos(codes[j], have);
+      }
+      $("k-msg").textContent = "Архиваас сэргээлээ: " + added + " зураг (" + codes.length + " сэлбэг), " + r2.notes + " тэмдэглэл, " + r2.added + " шинэ хариулт.";
+    } catch (e) { $("k-msg").textContent = "Уншиж чадсангүй: " + (e && e.message ? e.message : e); }
   };
   $("c-form").onsubmit = function (e) { e.preventDefault(); ask($("c-input").value); };
   try {
