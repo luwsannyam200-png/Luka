@@ -100,6 +100,8 @@ input.wide { width: 170px; }
 .photos .x { position: absolute; top: 4px; right: 4px; border: 0; border-radius: 50%; width: 24px; height: 24px; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
 .lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
 .lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
+.chip-x { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; margin-left: 6px; padding: 0 2px; cursor: pointer; opacity: .6; }
+.chip-x:hover { opacity: 1; color: var(--bad); }
 [hidden] { display: none !important; }
 @media (max-width: 640px) { .slot { grid-template-columns: 1fr auto; } .slot .file { grid-column: 1 / -1; } .tabs { grid-template-columns: 1fr; } }
 </style>
@@ -2708,21 +2710,43 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function keep(label, name, buf, hint) {
     idb("readwrite", function (st) { return st.put({ name: name, buf: buf, hint: hint, saved: Date.now() }, label); }).catch(function () { /* storage blocked: this session only */ });
   }
+  var KIND = { "Oracle үлдэгдэл": "stock", "Засварын хүсэлт": "requests", "Гэрээт сэлбэг": "catalog", "ТҮ-ний сэлбэг": "maint" };
+  /* forget one file: the assistant, the saved copy and a Weekly slot filled from it */
+  function removeSource(label) {
+    var name = String(sources[label] || "").replace(/ \(хадгалсан\)$/, "");
+    if (KIND[label]) delete kb[KIND[label]];
+    if (SUP.indexOf(label) >= 0) delete kb.suppliers[label];
+    if (kb.files) delete kb.files[label];
+    delete sources[label];
+    kb.last = null;
+    if (label === "Гэрээт сэлбэг") try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ }
+    var wkey = label === "Oracle үлдэгдэл" ? "stock" : SUP.indexOf(label) >= 0 ? label : null;
+    if (wkey && files[wkey] && (files[wkey].restored || files[wkey].name === name)) { delete files[wkey]; renderSlots(); }
+    idb("readwrite", function (st) { return st.delete(label); }).catch(function () { /* ignore */ });
+    renderSources();
+  }
   function renderSources() {
-    var names = Object.keys(sources);
-    $("c-sources").innerHTML = names.length ? names.map(function (k) { return '<span class="chip src">✓ ' + (/^Файл · /.test(k) ? "" : esc(k) + ": ") + esc(sources[k]) + "</span>"; }).join("")
-      : '<span class="sub" style="margin:0">Одоогоор файл алга.</span>';
-    if (names.length) {
-      var forget = document.createElement("button"); forget.type = "button"; forget.className = "chip"; forget.textContent = "Файлуудыг мартах";
+    var names = Object.keys(sources), box = $("c-sources");
+    box.innerHTML = names.length ? "" : '<span class="sub" style="margin:0">Одоогоор файл алга.</span>';
+    names.forEach(function (k) {
+      var chip = document.createElement("span"); chip.className = "chip src";
+      chip.textContent = "✓ " + (/^Файл · /.test(k) ? "" : k + ": ") + sources[k];
+      var x = document.createElement("button"); x.type = "button"; x.className = "chip-x"; x.textContent = "×"; x.title = "Энэ файлыг устгах";
+      x.onclick = function () { if (confirm("\"" + sources[k] + "\" файлыг устгах уу?")) removeSource(k); };
+      chip.appendChild(x); box.appendChild(chip);
+    });
+    if (names.length > 1) {
+      var forget = document.createElement("button"); forget.type = "button"; forget.className = "chip"; forget.textContent = "Бүгдийг устгах";
       forget.onclick = function () {
-        ["stock", "requests", "catalog"].forEach(function (k) { delete kb[k]; });
-        kb.suppliers = {}; kb.files = {}; sources = {}; forgot = true;
+        if (!confirm("Оруулсан бүх файлыг устгах уу? (Зураг, тэмдэглэл, мэдлэгийн сан хэвээр үлдэнэ)")) return;
+        ["stock", "requests", "catalog", "maint"].forEach(function (k) { delete kb[k]; });
+        kb.suppliers = {}; kb.files = {}; kb.last = null; sources = {}; forgot = true;
         Object.keys(files).forEach(function (k) { if (files[k].restored) delete files[k]; }); renderSlots();
         try { localStorage.removeItem("catalog"); } catch (e) { /* ignore */ }
         idb("readwrite", function (st) { return st.clear(); }).catch(function () { /* ignore */ });
         renderSources();
       };
-      $("c-sources").appendChild(forget);
+      box.appendChild(forget);
     }
   }
   function feed(f, hint) {
