@@ -9,7 +9,7 @@
   --bg: #eef3f6; --panel: #ffffff; --text: #1d2a35; --muted: #5a6b7a; --line: #d3dde5;
   --accent: #0f8b8d; --accent-text: #ffffff; --ok: #2e7d4f; --ok-bg: #e3f3ea;
   --warn: #8a5a00; --warn-bg: #fdf1d8; --bad: #b8322c; --bad-bg: #fce8e6; --drop: #e9f1f7;
-  --c-weekly: #3474d4; --c-zasvar: #c9522d; --c-medee: #7656c9; --c-chat: #0f8b8d;
+  --c-weekly: #3474d4; --c-tltkh: #2e7d4f; --c-zasvar: #c9522d; --c-medee: #7656c9; --c-chat: #0f8b8d;
   --navy: #1F3864; --blue: #2F5597; --light: #8EA9DB;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,12 +17,12 @@
     --bg: #10171c; --panel: #172128; --text: #e4ecf1; --muted: #93a5b2; --line: #2b3b46;
     --accent: #3fc1bd; --accent-text: #06201f; --ok: #6fd3a0; --ok-bg: #173226;
     --warn: #f1c46b; --warn-bg: #3a2f14; --bad: #ff8a80; --bad-bg: #3d1c1a; --drop: #1d2a33;
-    --c-weekly: #6ea4f5; --c-zasvar: #ff8a66; --c-medee: #a98df0; --c-chat: #3fc1bd;
+    --c-weekly: #6ea4f5; --c-tltkh: #5cc58a; --c-zasvar: #ff8a66; --c-medee: #a98df0; --c-chat: #3fc1bd;
   }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 48px; }
+main { max-width: 1600px; margin: 0 auto; padding: 24px 16px 48px; }
 h1 { font-size: 22px; margin: 0 0 4px; }
 .sub { color: var(--muted); margin: 0 0 20px; }
 .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
@@ -72,8 +72,8 @@ table.report tr.light td { background: var(--light); color: #000; }
 .stat b { display: block; font-size: 20px; }
 .stat span { color: var(--muted); font-size: 12px; }
 .stat.hot b { color: var(--bad); }
-.tabs { grid-template-columns: repeat(4, 1fr); }
-@media (max-width: 900px) { .tabs { grid-template-columns: 1fr 1fr; } }
+.tabs { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 1000px) { .tabs { grid-template-columns: 1fr 1fr; } }
 select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); }
 table.plain td, table.plain th { text-align: left; white-space: normal; }
 input.wide { width: 170px; }
@@ -107,14 +107,15 @@ input.wide { width: 170px; }
 [hidden] { display: none !important; }
 /* each tool has its own colour: tab card, buttons, drop zone and panel edges follow it */
 .tab[data-tool="weekly"], #tool-weekly { --tc: var(--c-weekly); }
+.tab[data-tool="tltkh"], #tool-tltkh { --tc: var(--c-tltkh); }
 .tab[data-tool="zasvar"], #tool-zasvar { --tc: var(--c-zasvar); }
 .tab[data-tool="medee"], #tool-medee { --tc: var(--c-medee); }
 .tab[data-tool="chat"], #tool-chat { --tc: var(--c-chat); }
 .tab { border-top: 4px solid color-mix(in srgb, var(--tc) 60%, var(--line)); }
 .tab b { color: color-mix(in srgb, var(--tc) 80%, var(--text)); }
 .tab[aria-selected="true"] { border-color: var(--tc); box-shadow: 0 0 0 1px var(--tc) inset; background: color-mix(in srgb, var(--tc) 9%, var(--panel)); }
-#tool-weekly, #tool-zasvar, #tool-medee, #tool-chat { --accent: var(--tc); --drop: color-mix(in srgb, var(--tc) 7%, var(--panel)); }
-#tool-weekly .panel, #tool-zasvar .panel, #tool-medee .panel, #tool-chat .panel { border-top: 3px solid color-mix(in srgb, var(--tc) 50%, var(--line)); }
+#tool-weekly, #tool-tltkh, #tool-zasvar, #tool-medee, #tool-chat { --accent: var(--tc); --drop: color-mix(in srgb, var(--tc) 7%, var(--panel)); }
+#tool-weekly .panel, #tool-tltkh .panel, #tool-zasvar .panel, #tool-medee .panel, #tool-chat .panel { border-top: 3px solid color-mix(in srgb, var(--tc) 50%, var(--line)); }
 .panel h2 { color: color-mix(in srgb, var(--tc, var(--accent)) 80%, var(--text)); }
 .drop { border-color: color-mix(in srgb, var(--tc, var(--accent)) 35%, var(--line)); }
 th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); }
@@ -128,6 +129,7 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
 
   <div class="tabs" role="tablist">
     <button class="tab" role="tab" id="tab-weekly" data-tool="weekly"><b>📦 Weekly үлдэгдэл</b><span>Weekly draft-д өнөөдрийн sheet нэмэх</span></button>
+    <button class="tab" role="tab" id="tab-tltkh" data-tool="tltkh"><b>📑 TL_TKH</b><span>Oracle үлдэгдлийг УХ / ЦХ-ээр янзлах</span></button>
     <button class="tab" role="tab" id="tab-zasvar" data-tool="zasvar"><b>🔧 Засварын хүсэлт</b><span>Mine2TL-ийн хүсэлтээс тайлан гаргах</span></button>
     <button class="tab" role="tab" id="tab-medee" data-tool="medee"><b>📋 Засварын мэдээ</b><span>Mine2TL-ийн мэдээг цэвэрлэж цаг бодох</span></button>
     <button class="tab" role="tab" id="tab-chat" data-tool="chat"><b>💬 Туслах</b><span>Файлуудаас асуултаар хайх</span></button>
@@ -158,6 +160,22 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
         <span>Жижиг саарал тоо = өмнөх долоо хоног</span>
       </div>
       <div class="tablewrap"><table id="w-table"></table></div>
+    </section>
+  </div>
+
+  <!-- ================= TL_TKH ================= -->
+  <div id="tool-tltkh" hidden>
+    <section class="panel">
+      <h2>1. Oracle үлдэгдэл</h2>
+      <div class="drop" id="t-drop">Oracle-оос гаргасан <b>үлдэгдлийн</b> Excel файлаа (жишээ нь 09-26 үлдэгдэл.xlsx) энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Weekly таб дээр оруулсан Oracle үлдэгдлийг энд ч автоматаар ашиглана.</small></div>
+      <input type="file" id="t-file" accept=".xlsx,.xls" hidden>
+      <div class="slots"><div class="slot"><div class="label">Oracle үлдэгдэл<small>заавал</small></div><div class="file" id="t-name">сонгоогүй</div><div class="row"><button class="btn" id="t-pick">Сонгох</button></div></div></div>
+    </section>
+    <section class="panel">
+      <h2>2. Янзлах</h2>
+      <div class="row"><button class="btn primary" id="t-go" disabled>📑 TL_TKH файл татах</button></div>
+      <p class="sub" style="margin:10px 0 0">Item Code бүрээр Quantity-г нэмнэ: <b>TL</b> (УХ) = TL_… агуулахууд ба «ТЛ ши», <b>TKH</b> (ЦХ) = TKH_… агуулахууд ба TG_TKH-Sub. Татсан файлын эхний sheet нь TL_TKH, дараа нь Oracle-ийн эх тайлан өөрчлөлтгүй.</p>
+      <div id="t-result"></div>
     </section>
   </div>
 
@@ -298,8 +316,9 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
   }
 
   /* ---------- tool switcher ---------- */
+  var TOOLS = ["weekly", "tltkh", "zasvar", "medee", "chat"];
   function choose(tool) {
-    ["weekly", "zasvar", "medee", "chat"].forEach(function (t) {
+    TOOLS.forEach(function (t) {
       $("tool-" + t).hidden = t !== tool;
       $("tab-" + t).setAttribute("aria-selected", String(t === tool));
     });
@@ -309,9 +328,9 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
   }
   Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) { b.onclick = function () { choose(b.dataset.tool); }; });
   var start = location.hash.slice(1);
-  if (["weekly", "zasvar", "medee", "chat"].indexOf(start) < 0) { try { start = localStorage.getItem("tool"); } catch (e) { start = null; } }
-  choose(["zasvar", "medee", "chat"].indexOf(start) >= 0 ? start : "weekly");
-  window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (["weekly", "zasvar", "medee", "chat"].indexOf(t) >= 0) choose(t); });
+  if (TOOLS.indexOf(start) < 0) { try { start = localStorage.getItem("tool"); } catch (e) { start = null; } }
+  choose(TOOLS.indexOf(start) > 0 ? start : "weekly");
+  window.addEventListener("hashchange", function () { var t = location.hash.slice(1); if (TOOLS.indexOf(t) >= 0) choose(t); });
 
   /* ================= WEEKLY ================= */
   var SLOTS = [
@@ -347,28 +366,40 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
         clr.onclick = function () { delete files[s.key]; renderSlots(); };
         el.children[2].appendChild(clr);
       }
-      if (f && s.key === "stock") {
-        var tt = document.createElement("button"); tt.className = "btn"; tt.textContent = "📑 TL_TKH";
-        tt.title = "Oracle үлдэгдлийг УХ (TL) / ЦХ (TKH)-ээр нэгтгэсэн sheet-тэй файл татах";
-        tt.onclick = function () { tlTkh(f, tt); };
-        el.children[2].appendChild(tt);
-      }
       $("w-slots").appendChild(el);
     });
     $("w-go").disabled = !(files.draft && files.stock);
+    renderTl();
   }
-  /* Oracle report → same file with a TL_TKH summary sheet in front (item code, TL = УХ, TKH = ЦХ). */
-  async function tlTkh(f, btn) {
+  /* ================= TL_TKH =================
+     Oracle report → same file with a TL_TKH summary sheet in front (item code, TL = УХ, TKH = ЦХ).
+     Shares the Oracle file with the Weekly tab (files.stock). */
+  function renderTl() {
+    var f = files.stock;
+    $("t-name").textContent = f ? f.name + (f.restored ? " (хадгалсан)" : "") : "сонгоогүй";
+    $("t-name").classList.toggle("set", !!f);
+    $("t-go").disabled = !f;
+  }
+  async function tlPlace(list) {
+    var f = list && list[0]; if (!f) return;
+    await place(f, "stock");
+    if (files.stock !== f) { $("t-result").innerHTML = $("w-result").innerHTML; return; } // not an Oracle report: show why
+    $("t-result").innerHTML = "";
+  }
+  $("t-pick").onclick = function (e) { e.stopPropagation(); $("t-file").click(); };
+  wireDrop("t-drop", "t-file", tlPlace);
+  $("t-go").onclick = async function () {
+    var f = files.stock, btn = $("t-go"); if (!f) return;
     btn.disabled = true; btn.textContent = "Бэлдэж байна…"; await tick();
     try {
       var r = await WeeklyCore.buildTlTkh(await read(f));
       var name = f.name.replace(/(_TL_TKH)?(\s*\(\d+\))?\.xlsx?$/i, "") + "_TL_TKH.xlsx";
       download(r.bytes, name);
       var n0 = function (x) { return Number(x).toLocaleString("en-US", { maximumFractionDigits: 2 }); };
-      show("w-result", "ok", "<b>" + esc(name) + "</b> татлаа. TL_TKH sheet: " + n0(r.items) + " сэлбэг (Oracle-ийн " + n0(r.rows) + " мөрөөс). " +
-        "УХ (TL…, ТЛ ши): " + n0(r.tlItems) + " сэлбэг, нийт " + n0(r.tlQty) + " · ЦХ (TKH…, TG_TKH-Sub): " + n0(r.tkhItems) + " сэлбэг, нийт " + n0(r.tkhQty) + ". Эх sheet хэвээрээ.", true);
-    } catch (e) { show("w-result", "bad", "TL_TKH үүсгэж чадсангүй: " + esc(e && e.message ? e.message : e), true); }
-    btn.disabled = false; btn.textContent = "📑 TL_TKH";
+      show("t-result", "ok", "<b>" + esc(name) + "</b> татлаа. TL_TKH sheet: " + n0(r.items) + " сэлбэг (Oracle-ийн " + n0(r.rows) + " мөрөөс).<br>" +
+        "УХ (TL…, ТЛ ши): " + n0(r.tlItems) + " сэлбэг, нийт " + n0(r.tlQty) + " · ЦХ (TKH…, TG_TKH-Sub): " + n0(r.tkhItems) + " сэлбэг, нийт " + n0(r.tkhQty) + ".");
+    } catch (e) { show("t-result", "bad", "TL_TKH үүсгэж чадсангүй: " + esc(e && e.message ? e.message : e)); }
+    btn.disabled = false; btn.textContent = "📑 TL_TKH файл татах";
   }
   function assign(list) {
     var skipped = [];
