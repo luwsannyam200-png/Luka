@@ -6,16 +6,18 @@
 <title>Ажлын хэрэгсэл</title>
 <style>
 :root {
-  --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --line: #dfe3ea;
-  --accent: #2f5bd3; --accent-text: #ffffff; --ok: #1f7a4d; --ok-bg: #e5f4ec;
-  --warn: #8a5a00; --warn-bg: #fff3d6; --bad: #b3261e; --bad-bg: #fde8e6; --drop: #eef2fb;
+  --bg: #eef3f6; --panel: #ffffff; --text: #1d2a35; --muted: #5a6b7a; --line: #d3dde5;
+  --accent: #0f8b8d; --accent-text: #ffffff; --ok: #2e7d4f; --ok-bg: #e3f3ea;
+  --warn: #8a5a00; --warn-bg: #fdf1d8; --bad: #b8322c; --bad-bg: #fce8e6; --drop: #e9f1f7;
+  --c-weekly: #3474d4; --c-zasvar: #c9522d; --c-medee: #7656c9; --c-chat: #0f8b8d;
   --navy: #1F3864; --blue: #2F5597; --light: #8EA9DB;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14171d; --panel: #1c2028; --text: #e7eaf0; --muted: #9aa3b2; --line: #2e3440;
-    --accent: #6d8ff0; --accent-text: #0f1320; --ok: #6fd3a0; --ok-bg: #173226;
-    --warn: #f1c46b; --warn-bg: #3a2f14; --bad: #ff8a80; --bad-bg: #3d1c1a; --drop: #1f2636;
+    --bg: #10171c; --panel: #172128; --text: #e4ecf1; --muted: #93a5b2; --line: #2b3b46;
+    --accent: #3fc1bd; --accent-text: #06201f; --ok: #6fd3a0; --ok-bg: #173226;
+    --warn: #f1c46b; --warn-bg: #3a2f14; --bad: #ff8a80; --bad-bg: #3d1c1a; --drop: #1d2a33;
+    --c-weekly: #6ea4f5; --c-zasvar: #ff8a66; --c-medee: #a98df0; --c-chat: #3fc1bd;
   }
 }
 * { box-sizing: border-box; }
@@ -103,6 +105,19 @@ input.wide { width: 170px; }
 .chip-x { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; margin-left: 6px; padding: 0 2px; cursor: pointer; opacity: .6; }
 .chip-x:hover { opacity: 1; color: var(--bad); }
 [hidden] { display: none !important; }
+/* each tool has its own colour: tab card, buttons, drop zone and panel edges follow it */
+.tab[data-tool="weekly"], #tool-weekly { --tc: var(--c-weekly); }
+.tab[data-tool="zasvar"], #tool-zasvar { --tc: var(--c-zasvar); }
+.tab[data-tool="medee"], #tool-medee { --tc: var(--c-medee); }
+.tab[data-tool="chat"], #tool-chat { --tc: var(--c-chat); }
+.tab { border-top: 4px solid color-mix(in srgb, var(--tc) 60%, var(--line)); }
+.tab b { color: color-mix(in srgb, var(--tc) 80%, var(--text)); }
+.tab[aria-selected="true"] { border-color: var(--tc); box-shadow: 0 0 0 1px var(--tc) inset; background: color-mix(in srgb, var(--tc) 9%, var(--panel)); }
+#tool-weekly, #tool-zasvar, #tool-medee, #tool-chat { --accent: var(--tc); --drop: color-mix(in srgb, var(--tc) 7%, var(--panel)); }
+#tool-weekly .panel, #tool-zasvar .panel, #tool-medee .panel, #tool-chat .panel { border-top: 3px solid color-mix(in srgb, var(--tc) 50%, var(--line)); }
+.panel h2 { color: color-mix(in srgb, var(--tc, var(--accent)) 80%, var(--text)); }
+.drop { border-color: color-mix(in srgb, var(--tc, var(--accent)) 35%, var(--line)); }
+th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); }
 @media (max-width: 640px) { .slot { grid-template-columns: 1fr auto; } .slot .file { grid-column: 1 / -1; } .tabs { grid-template-columns: 1fr; } }
 </style>
 </head>
