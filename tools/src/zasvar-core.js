@@ -277,7 +277,9 @@
       bytes: bytes, reqs: reqs, days: days, today: today, skipped: read.skipped, table: rep.table,
       sheetNames: sheets.map(function (s) { return s.finalName; }),
       waiting: counter(reqs, bucketOf), bucketOf: bucketOf,
-      techCount: uniq(reqs.map(function (q) { return q.tech; })).length, dups: duplicates(reqs)
+      techCount: uniq(reqs.map(function (q) { return q.tech; })).length, dups: duplicates(reqs),
+      // shown to the user, who reads it and types "УХ-Засварын хэсэгт N чирэгч засвар хүлээлгэнд" by hand
+      waitAggList: reqs.filter(function (q) { return norm(q.loc) === "ухаа худаг" && norm(q.srv) === "агрегат"; })
     };
   }
 

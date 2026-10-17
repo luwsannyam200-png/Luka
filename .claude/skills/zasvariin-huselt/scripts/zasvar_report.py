@@ -235,6 +235,9 @@ def main():
             for t, l in sorted(by_tech.items(), key=lambda x: mn_key(x[0])) if len(l) > 1}
     json.dump({
         "requests": len(reqs), "tech_count": len(by_tech), "skipped_rows": skipped,
+        # shown to the user, who decides "УХ-Засварын хэсэгт N чирэгч засвар хүлээлгэнд"
+        "ukh_agregat": [{"tech": q["tech"], "day": str(q["req"].date()), "type": q["type"], "desc": q["desc"]}
+                        for q in reqs if norm(q["loc"]) == "ухаа худаг" and norm(q["srv"]) == "агрегат"],
         "by_location": Counter(q["loc"] for q in reqs), "by_service": Counter(q["srv"] for q in reqs),
         "by_day": {str(d): sum(1 for q in reqs if q["req"].date() == d) for d in days},
         "duplicates": dups, "source_sheets": src_names,

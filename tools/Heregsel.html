@@ -207,8 +207,9 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
         <button class="btn primary" id="z-copy">📋 Имэйл хуулах</button>
         <span id="z-copied" class="sub" style="margin:0"></span>
       </div>
+      <div id="z-agg" style="margin-bottom:10px"></div>
       <div id="z-mail" class="mail" contenteditable="true" spellcheck="false"></div>
-      <p class="sub" style="margin:8px 0 0;font-size:13px">«Имэйл хуулах» дараад Outlook / Gmail-д <b>Ctrl+V</b> хийнэ. Драфт дотор шууд засаж болно. Чирэгчийн тоог хоосон орхивол тэр мөр орохгүй.</p>
+      <p class="sub" style="margin:8px 0 0;font-size:13px">«Имэйл хуулах» дараад Outlook / Gmail-д <b>Ctrl+V</b> хийнэ. Драфт дотор шууд засаж болно.<br>Чирэгчийн тоог дээрх шүүлтийн жагсаалтыг (Ухаа худаг + Агрегат) уншаад өөрөө бичнэ. Хоосон эсвэл 0 бол тэр мөр орохгүй.</p>
     </section>
     <section class="panel" id="z-dup" hidden>
       <h2>4. Давхардал</h2>
@@ -1026,7 +1027,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       bytes: bytes, reqs: reqs, days: days, today: today, skipped: read.skipped, table: rep.table,
       sheetNames: sheets.map(function (s) { return s.finalName; }),
       waiting: counter(reqs, bucketOf), bucketOf: bucketOf,
-      techCount: uniq(reqs.map(function (q) { return q.tech; })).length, dups: duplicates(reqs)
+      techCount: uniq(reqs.map(function (q) { return q.tech; })).length, dups: duplicates(reqs),
+      // shown to the user, who reads it and types "УХ-Засварын хэсэгт N чирэгч засвар хүлээлгэнд" by hand
+      waitAggList: reqs.filter(function (q) { return norm(q.loc) === "ухаа худаг" && norm(q.srv) === "агрегат"; })
     };
   }
 
@@ -2756,13 +2759,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   }
   function zMail() {
     if (!zres) return;
-    var n = $("z-wait").value.trim(), p = function (t) { return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' + (t ? esc(t) : "<br>") + "</div>"; };
+    var n = $("z-wait").value.trim(); if (n === "0") n = "";
+    var p = function (t) { return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' + (t ? esc(t) : "<br>") + "</div>"; };
     $("z-mail").innerHTML = p("Өглөөний мэнд.") + p("") + p("Тээврийн хэрэгслийн засварын хүсэлтийн мэдээлэл хүргүүлж байна.") +
       (n ? p("УХ-Засварын хэсэгт " + n + " чирэгч засвар хүлээлгэнд байна.") : "") + p("") +
       p("Нийт хүсэлт-" + zres.reqs.length) + p("Т/Х -ийн тоо-" + zres.techCount) + p("") + zTableHtml(zres);
   }
-  try { $("z-wait").value = localStorage.getItem("zWait") || ""; } catch (e) { /* storage unavailable */ }
-  $("z-wait").oninput = function () { try { localStorage.setItem("zWait", $("z-wait").value.trim()); } catch (e) { /* storage unavailable */ } zMail(); };
+  $("z-wait").oninput = zMail;
   $("z-copy").onclick = function () {
     var box = $("z-mail"), sel = window.getSelection(), r = document.createRange();
     r.selectNodeContents(box); sel.removeAllRanges(); sel.addRange(r);
@@ -2772,7 +2775,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     setTimeout(function () { $("z-copied").textContent = ""; }, 4000);
   };
   function renderZasvar(res) {
-    zres = res; zMail();
+    zres = res; $("z-wait").value = ""; zMail();
+    $("z-agg").innerHTML = '<div class="sub" style="margin:0 0 4px;font-size:13px">Шүүлт: Засварын байршил = <b>Ухаа худаг</b>, Үйлчилгээ = <b>Агрегат</b> → ' + res.waitAggList.length + " хүсэлт. Уншаад чирэгчийн тоог дээрх нүдэнд бичнэ үү.</div>" +
+      (res.waitAggList.length ? '<div class="tablewrap"><table class="plain"><thead><tr><th>Техникийн №</th><th>Хүсэлтийн өдөр</th><th>Засварын төрөл</th><th>Тайлбар</th></tr></thead><tbody>' +
+        res.waitAggList.map(function (q) { return "<tr><td><b>" + esc(q.tech) + "</b></td><td>" + esc(q.day) + "</td><td>" + esc(q.type) + "</td><td>" + esc(q.desc) + "</td></tr>"; }).join("") + "</tbody></table></div>" : "");
     $("z-preview").hidden = false;
     var nd = res.dups.reduce(function (a, d) { return a + d.list.length; }, 0);
     $("z-stats").innerHTML = [
