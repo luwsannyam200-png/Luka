@@ -289,7 +289,8 @@ input.wide { width: 170px; }
       $("tab-" + t).setAttribute("aria-selected", String(t === tool));
     });
     try { localStorage.setItem("tool", tool); } catch (e) { /* storage unavailable */ }
-    if (location.hash !== "#" + tool) history.replaceState(null, "", "#" + tool);
+    // inside another page (about:srcdoc iframe) the URL cannot change; the tab still switches
+    try { if (location.hash !== "#" + tool) history.replaceState(null, "", "#" + tool); } catch (e) { /* embedded */ }
   }
   Array.prototype.forEach.call(document.querySelectorAll(".tab"), function (b) { b.onclick = function () { choose(b.dataset.tool); }; });
   var start = location.hash.slice(1);
@@ -331,9 +332,28 @@ input.wide { width: 170px; }
         clr.onclick = function () { delete files[s.key]; renderSlots(); };
         el.children[2].appendChild(clr);
       }
+      if (f && s.key === "stock") {
+        var tt = document.createElement("button"); tt.className = "btn"; tt.textContent = "📑 TL_TKH";
+        tt.title = "Oracle үлдэгдлийг УХ (TL) / ЦХ (TKH)-ээр нэгтгэсэн sheet-тэй файл татах";
+        tt.onclick = function () { tlTkh(f, tt); };
+        el.children[2].appendChild(tt);
+      }
       $("w-slots").appendChild(el);
     });
     $("w-go").disabled = !(files.draft && files.stock);
+  }
+  /* Oracle report → same file with a TL_TKH summary sheet in front (item code, TL = УХ, TKH = ЦХ). */
+  async function tlTkh(f, btn) {
+    btn.disabled = true; btn.textContent = "Бэлдэж байна…"; await tick();
+    try {
+      var r = await WeeklyCore.buildTlTkh(await read(f));
+      var name = f.name.replace(/(_TL_TKH)?(\s*\(\d+\))?\.xlsx?$/i, "") + "_TL_TKH.xlsx";
+      download(r.bytes, name);
+      var n0 = function (x) { return Number(x).toLocaleString("en-US", { maximumFractionDigits: 2 }); };
+      show("w-result", "ok", "<b>" + esc(name) + "</b> татлаа. TL_TKH sheet: " + n0(r.items) + " сэлбэг (Oracle-ийн " + n0(r.rows) + " мөрөөс). " +
+        "УХ (TL…, ТЛ ши): " + n0(r.tlItems) + " сэлбэг, нийт " + n0(r.tlQty) + " · ЦХ (TKH…, TG_TKH-Sub): " + n0(r.tkhItems) + " сэлбэг, нийт " + n0(r.tkhQty) + ". Эх sheet хэвээрээ.", true);
+    } catch (e) { show("w-result", "bad", "TL_TKH үүсгэж чадсангүй: " + esc(e && e.message ? e.message : e), true); }
+    btn.disabled = false; btn.textContent = "📑 TL_TKH";
   }
   function assign(list) {
     var skipped = [];
@@ -898,7 +918,7 @@ input.wide { width: 170px; }
       bot({ text: "Weekly таб руу шилжлээ. Бэлэн файлууд: " + (have.length ? have.map(function (k) { return "**" + (k === "stock" ? "Oracle үлдэгдэл" : k) + "** (" + files[k].name + ")"; }).join(", ") : "алга") + ".\n" + miss +
         (files.draft ? "Weekly draft бэлэн. \"Үүсгэх\" дарна уу." : "Одоо **Weekly draft**-аа (өмнөх долоо хоногийн, N/O/P-г засварласан хувилбараа) оруулаад \"Үүсгэх\" дарна уу.") });
       $("c-input").value = "";
-      choose("weekly"); location.hash = "#weekly";
+      choose("weekly");
       return;
     }
     try {
