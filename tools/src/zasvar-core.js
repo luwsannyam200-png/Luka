@@ -1,7 +1,9 @@
 /* Repair request report (Mine2TL export): browser + Node.
  * Port of .claude/skills/zasvariin-huselt/scripts/zasvar_report.py.
- * The export workbook is kept byte-identical; the Тайлан, Pivot and Хүлээлт
- * sheets are injected in front of it at the XML level with their own styles. */
+ * The export workbook is kept byte-identical; two sheets are injected in front
+ * of it at the XML level, laid out like the team's final report:
+ *   Sheet1  pivot layout (Count of Засварын төрөл: байршил > үйлчилгээ × өдөр)
+ *   Sheet2  report table at D5 (navy / blue / light), "Нийт хүсэлт" last */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
     module.exports = factory(require("jszip"), require("xlsx"));
@@ -14,12 +16,16 @@
   var BLANK = "(хоосон)";
   var BUCKETS = [["Өнөөдөр", 0, 0], ["1–3 хоног", 1, 3], ["4–7 хоног", 4, 7], ["8+ хоног", 8, 1e9]];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var REP_TOP = 5, REP_LEFT = 4; // report table starts at D5
   var NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 
   function norm(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
   function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function colLetter(n) { var s = ""; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
-  function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+  // Mongolian alphabetical order (Ө after О, Ү after У), as Excel sorts it
+  var MN_ABC = "абвгдеёжзийклмноөпрстуүфхцчшщъыьэюя";
+  function mnKey(s) { return String(s).toLowerCase().replace(/[а-яёөү]/g, function (c) { return String.fromCharCode(0x2000 + MN_ABC.indexOf(c)); }); }
+  function cmp(a, b) { a = mnKey(a); b = mnKey(b); return a < b ? -1 : a > b ? 1 : 0; }
 
   /* Dates as "YYYY-MM-DD" keys; Excel serials are converted without time zones. */
   function dayKey(v) {
@@ -63,6 +69,7 @@
       srv: find(function (n) { return n === "үйлчилгээ"; }, "Үйлчилгээ"),
       req: find(function (n) { return n.indexOf("хүсэлт гаргасан") === 0; }, "Хүсэлт гаргасан огноо")
     };
+    var descIx = found.names.indexOf("тайлбар");
     var out = [], skipped = 0;
     found.rows.slice(found.hi + 1).forEach(function (r) {
       if (r[ix.tech] == null || r[ix.type] == null) { if (r.some(function (c) { return c != null; })) skipped++; return; }
@@ -73,7 +80,8 @@
         tech: String(r[ix.tech]).trim(),
         loc: String(r[ix.loc] == null ? "" : r[ix.loc]).trim() || BLANK,
         srv: String(r[ix.srv] == null ? "" : r[ix.srv]).trim() || BLANK,
-        day: day
+        day: day,
+        desc: descIx >= 0 && r[descIx] != null ? String(r[descIx]).trim() : ""
       });
     });
     return { reqs: out, skipped: skipped };
@@ -89,32 +97,32 @@
       styles = styles.replace(m[0], "<" + tag + ' count="' + (base + items.length) + '"' + m[2] + ">" + m[3] + items.join("") + "</" + tag + ">");
       return base;
     }
-    function font(bold, color) { return "<font>" + (bold ? "<b/>" : "") + '<sz val="11"/><color rgb="FF' + color + '"/><name val="Calibri"/><family val="2"/></font>'; }
+    function font(bold, color) { return "<font>" + (bold ? "<b/>" : "") + '<sz val="11"/><color rgb="FF' + color + '"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font>'; }
     function fill(c) { return '<fill><patternFill patternType="solid"><fgColor rgb="FF' + c + '"/><bgColor indexed="64"/></patternFill></fill>'; }
-    var f0 = append("fonts", [font(true, "FFFFFF"), font(true, "000000"), font(false, "000000")]);
-    var F = { boldWhite: f0, bold: f0 + 1, plain: f0 + 2 };
-    var colors = { navy: "1F3864", blue: "2F5597", light: "8EA9DB", head: "B4E5D2", sub1: "DDF3EA", sub2: "F0FAF5", red: "F8D2CE" };
+    var f0 = append("fonts", [font(true, "FFFFFF"), font(false, "000000"), font(true, "000000")]);
+    var F = { boldWhite: f0, plain: f0 + 1, bold: f0 + 2 };
+    // Office accent 5 (4472C4) with the report's tints: −50 %, −25 %, +40 %; pivot header light blue
+    var colors = { navy: "203864", blue: "2F5597", light: "8FAADC", pv: "DDEBF7" };
     var keys = Object.keys(colors);
     var p0 = append("fills", keys.map(function (k) { return fill(colors[k]); }));
     var P = {}; keys.forEach(function (k, i) { P[k] = p0 + i; });
     var side = function (n, c) { return "<" + n + ' style="thin"><color rgb="FF' + c + '"/></' + n + ">"; };
     var b0 = append("borders", [
-      "<border>" + side("left", "1F3864") + side("right", "1F3864") + side("top", "1F3864") + side("bottom", "1F3864") + "<diagonal/></border>",
-      "<border><left/><right/><top/>" + side("bottom", "C8D3CE") + "<diagonal/></border>"
+      "<border>" + side("left", "000000") + side("right", "000000") + side("top", "000000") + side("bottom", "000000") + "<diagonal/></border>",
+      "<border><left/><right/><top/>" + side("bottom", "9BC2E6") + "<diagonal/></border>",
+      "<border><left/><right/>" + side("top", "9BC2E6") + "<bottom/><diagonal/></border>"
     ]);
-    var B = { grid: b0, line: b0 + 1 };
+    var B = { grid: b0, under: b0 + 1, over: b0 + 2 };
+    // [font, fill, border, horizontal, indent]
     var defs = {
       navy: [F.boldWhite, P.navy, B.grid, "center"], blue: [F.boldWhite, P.blue, B.grid, "center"], light: [F.plain, P.light, B.grid, "center"],
-      headL: [F.bold, P.head, B.line, "left"], headC: [F.bold, P.head, B.line, "center"],
-      sub1L: [F.bold, P.sub1, B.line, "left"], sub1C: [F.bold, P.sub1, B.line, "center"],
-      sub2L: [F.bold, P.sub2, B.line, "left"], sub2C: [F.bold, P.sub2, B.line, "center"],
-      leafL: [F.plain, 0, B.line, "left"], leafC: [F.plain, 0, B.line, "center"],
-      redB: [F.bold, P.red, B.line, "center"], red: [F.plain, P.red, B.line, "center"]
+      pvHead: [F.bold, P.pv, B.under, "left"], pvLoc: [F.bold, 0, 0, "left"], pvLocN: [F.bold, 0, 0, "general"],
+      pvSrv: [F.plain, 0, 0, "left", 1], pvN: [F.plain, 0, 0, "general"], pvTot: [F.bold, P.pv, B.over, "left"], pvTotN: [F.bold, P.pv, B.over, "general"]
     };
     var names = Object.keys(defs);
     var x0 = append("cellXfs", names.map(function (k) {
-      var d = defs[k];
-      return '<xf numFmtId="0" fontId="' + d[0] + '" fillId="' + d[1] + '" borderId="' + d[2] + '" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="' + d[3] + '" vertical="center" wrapText="1"/></xf>';
+      var d = defs[k], al = d[3] === "center" ? '<alignment horizontal="center" vertical="center"/>' : d[3] === "left" ? '<alignment horizontal="left"' + (d[4] ? ' indent="' + d[4] + '"' : "") + "/>" : "";
+      return '<xf numFmtId="0" fontId="' + d[0] + '" fillId="' + d[1] + '" borderId="' + d[2] + '" xfId="0" applyFont="1" applyFill="1" applyBorder="1"' + (al ? ' applyAlignment="1">' + al + "</xf>" : "/>");
     }));
     var X = {}; names.forEach(function (k, i) { X[k] = x0 + i; });
     return { styles: styles, X: X };
@@ -146,8 +154,9 @@
   function uniq(list) { return list.filter(function (x, i) { return list.indexOf(x) === i; }).sort(cmp); }
 
   function reportSheet(reqs, days, X) {
-    var sh = new Sheet(), top = 4, left = 3, ncol = days.length + 2;
-    sh.cols[left - 1] = 20; for (var i = 1; i < ncol; i++) sh.cols[left - 1 + i] = 10;
+    var sh = new Sheet(), top = REP_TOP, left = REP_LEFT;
+    sh.cols[left - 1] = 15.88671875;
+    var ncol = days.length + 2;
     function put(r, label, list, style) {
       var c = counter(list, function (q) { return q.day; });
       sh.set(r, left, label, style);
@@ -173,38 +182,39 @@
     return { sheet: sh, table: table };
   }
 
-  function treeSheet(reqs, keys, keyOf, titles, X, redLast) {
-    var sh = new Sheet();
-    sh.freeze = true;
-    sh.cols[0] = 32; for (var i = 1; i <= keys.length + 1; i++) sh.cols[i] = 9;
-    titles.concat(["Нийт"]).forEach(function (t, i) { sh.set(1, i + 1, t, i ? X.headC : X.headL); });
-    var r = 2;
-    function write(label, list, level, total) {
-      var c = counter(list, keyOf);
-      var L = total ? X.headL : level === 0 ? X.sub1L : level === 1 ? X.sub2L : X.leafL;
-      var C = total ? X.headC : level === 0 ? X.sub1C : level === 1 ? X.sub2C : X.leafC;
-      sh.set(r, 1, (total ? "" : "        ".slice(0, level * 4)) + label, L);
-      keys.forEach(function (k, i) {
-        var v = c[k] || null, st = C;
-        if (redLast && i === keys.length - 1 && v) st = level < 2 || total ? X.redB : X.red;
-        sh.set(r, i + 2, v, st);
-      });
-      sh.set(r, keys.length + 2, list.length, C);
-      r++;
+  /* Values laid out as the Excel PivotTable "Count of Засварын төрөл"
+     (rows: байршил > үйлчилгээ, columns: request day). */
+  function pivotSheet(reqs, days, X) {
+    var sh = new Sheet(), last = days.length + 2;
+    sh.cols = [23.21875, 15.5546875].concat(days.slice(1).map(function () { return 6.5546875; })).concat([10.77734375]);
+    sh.set(1, 1, "Count of Засварын төрөл", X.pvHead); sh.set(1, 2, "Column Labels", X.pvHead);
+    for (var c = 3; c <= last; c++) sh.set(1, c, null, X.pvHead);
+    sh.set(2, 1, "Row Labels", X.pvHead);
+    days.forEach(function (d, i) { sh.set(2, i + 2, dayLabel(d), X.pvHead); });
+    sh.set(2, last, "Grand Total", X.pvHead);
+    var r = 3;
+    function put(label, list, L, N) {
+      var cnt = counter(list, function (q) { return q.day; });
+      sh.set(r, 1, label, L);
+      days.forEach(function (d, i) { sh.set(r, i + 2, cnt[d] || null, N); });
+      sh.set(r, last, list.length, N); r++;
     }
-    uniq(reqs.map(function (q) { return q.type; })).forEach(function (t) {
-      var lt = reqs.filter(function (q) { return q.type === t; });
-      write(t, lt, 0);
-      uniq(lt.map(function (q) { return q.loc; })).forEach(function (loc) {
-        var ll = lt.filter(function (q) { return q.loc === loc; });
-        write(loc, ll, 1);
-        uniq(ll.map(function (q) { return q.srv; })).filter(function (s) { return s !== BLANK; }).forEach(function (s) {
-          write(s, ll.filter(function (q) { return q.srv === s; }), 2);
-        });
-      });
+    uniq(reqs.map(function (q) { return q.loc; })).forEach(function (loc) {
+      var inLoc = reqs.filter(function (q) { return q.loc === loc; });
+      put(loc, inLoc, X.pvLoc, X.pvLocN);
+      var srv = uniq(inLoc.map(function (q) { return q.srv; })).filter(function (s) { return s !== BLANK; });
+      if (inLoc.some(function (q) { return q.srv === BLANK; })) srv.push(BLANK);
+      srv.forEach(function (s) { put(s === BLANK ? "(blank)" : s, inLoc.filter(function (q) { return q.srv === s; }), X.pvSrv, X.pvN); });
     });
-    write("Нийт", reqs, 0, true);
+    put("Grand Total", reqs, X.pvTot, X.pvTotN);
     return sh;
+  }
+
+  /* Same truck (Техникийн №) with more than one request */
+  function duplicates(reqs) {
+    var by = {};
+    reqs.forEach(function (q) { (by[q.tech] = by[q.tech] || []).push(q); });
+    return Object.keys(by).filter(function (t) { return by[t].length > 1; }).sort(cmp).map(function (t) { return { tech: t, list: by[t] }; });
   }
 
   async function buildZasvar(opts) {
@@ -222,9 +232,8 @@
     var X = st.X;
     var rep = reportSheet(reqs, days, X);
     var sheets = [
-      { name: "Тайлан", xml: rep.sheet.xml(true) },
-      { name: "Pivot", xml: treeSheet(reqs, days, function (q) { return q.day; }, ["Засварын төрөл / байршил / үйлчилгээ"].concat(days.map(dayLabel)), X).xml(false) },
-      { name: "Хүлээлт", xml: treeSheet(reqs, BUCKETS.map(function (b) { return b[0]; }), bucketOf, ["Өнөөдөр: " + today].concat(BUCKETS.map(function (b) { return b[0]; })), X, true).xml(false) }
+      { name: "Sheet1", xml: pivotSheet(reqs, days, X).xml(false) },
+      { name: "Sheet2", xml: rep.sheet.xml(true) }
     ];
 
     var wbx = await zip.file("xl/workbook.xml").async("string");
@@ -251,7 +260,7 @@
     // New sheets go first; shift sheet-local defined names by the number of inserted sheets.
     wbx = wbx.replace(/<sheets>/, "<sheets>" + tags.join(""));
     wbx = wbx.replace(/localSheetId="(\d+)"/g, function (_, i) { return 'localSheetId="' + (+i + sheets.length) + '"'; });
-    if (/activeTab="\d+"/.test(wbx)) wbx = wbx.replace(/activeTab="\d+"/, 'activeTab="0"'); else wbx = wbx.replace(/<workbookView /, '<workbookView activeTab="0" ');
+    if (/activeTab="\d+"/.test(wbx)) wbx = wbx.replace(/activeTab="\d+"/, 'activeTab="1"'); else wbx = wbx.replace(/<workbookView /, '<workbookView activeTab="1" ');
     wbx = wbx.replace(/firstSheet="\d+"/, 'firstSheet="0"');
     zip.file("xl/workbook.xml", wbx);
     zip.file("xl/_rels/workbook.xml.rels", rels);
@@ -267,7 +276,8 @@
     return {
       bytes: bytes, reqs: reqs, days: days, today: today, skipped: read.skipped, table: rep.table,
       sheetNames: sheets.map(function (s) { return s.finalName; }),
-      waiting: counter(reqs, bucketOf), bucketOf: bucketOf
+      waiting: counter(reqs, bucketOf), bucketOf: bucketOf,
+      techCount: uniq(reqs.map(function (q) { return q.tech; })).length, dups: duplicates(reqs)
     };
   }
 
@@ -290,23 +300,23 @@
       if (!B) { problems.push("Эх sheet алга: " + s); return; }
       Object.keys(A).forEach(function (k) { if (k[0] !== "!" && (A[k].v !== (B[k] || {}).v)) problems.push(s + " " + k + " өөрчлөгдсөн"); });
     });
-    var t = wn.Sheets[res.sheetNames[0]];
+    var t = wn.Sheets[res.sheetNames[1]];
     if (!t) { problems.push("Тайлан sheet олдсонгүй"); return problems; }
     var v = function (col, row) { var c = t[colLetter(col) + row]; return c ? c.v : null; };
-    var ncol = res.days.length + 2, lastCol = 3 + ncol - 1, locSum = 0, r = 5, total = null;
-    if (v(3, 4) !== "Засварын төрөл" || v(lastCol, 4) !== "Хүсэлт") problems.push("Тайлан: гарчгийн мөр буруу");
-    for (; r < 5 + res.table.length; r++) {
+    var T = REP_TOP, L = REP_LEFT, ncol = res.days.length + 2, lastCol = L + ncol - 1, locSum = 0, r = T + 1, total = null;
+    if (v(L, T) !== "Засварын төрөл" || v(lastCol, T) !== "Хүсэлт") problems.push("Тайлан: гарчгийн мөр буруу");
+    for (; r < T + 1 + res.table.length; r++) {
       var sum = 0;
-      for (var col = 4; col < lastCol; col++) sum += v(col, r) || 0;
-      var entry = res.table[r - 5];
-      if (v(3, r) !== entry.label) problems.push("Тайлан: " + r + "-р мөрийн нэр буруу");
+      for (var col = L + 1; col < lastCol; col++) sum += v(col, r) || 0;
+      var entry = res.table[r - T - 1];
+      if (v(L, r) !== entry.label) problems.push("Тайлан: " + r + "-р мөрийн нэр буруу");
       if (sum !== v(lastCol, r) || v(lastCol, r) !== entry.list.length) problems.push('Тайлан: "' + entry.label + '" мөрийн нийлбэр буруу');
       if (entry.loc) locSum += v(lastCol, r);
       if (entry.total) total = v(lastCol, r);
     }
     if (total !== N) problems.push("Тайлан: нийт хүсэлт " + total + " ≠ " + N);
     if (locSum !== N) problems.push("Тайлан: байршлуудын нийлбэр " + locSum + " ≠ " + N);
-    [1, 2].forEach(function (k) {
+    [0].forEach(function (k) {
       var s = wn.Sheets[res.sheetNames[k]], rr = XLSX.utils.sheet_to_json(s, { header: 1, raw: true, defval: null });
       var lastRow = rr[rr.length - 1];
       if (lastRow[lastRow.length - 1] !== N) problems.push(res.sheetNames[k] + ": нийт " + lastRow[lastRow.length - 1] + " ≠ " + N);

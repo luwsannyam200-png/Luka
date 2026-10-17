@@ -105,6 +105,10 @@ input.wide { width: 170px; }
 .chip-x { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; margin-left: 6px; padding: 0 2px; cursor: pointer; opacity: .6; }
 .chip-x:hover { opacity: 1; color: var(--bad); }
 [hidden] { display: none !important; }
+.mail { background: #fff; color: #000; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font: 11pt Calibri, Carlito, Arial, sans-serif; overflow-x: auto; }
+.mail table { width: auto; font-size: 11pt; }
+.mail td { position: static; white-space: nowrap; }
+tr.dupfirst td { border-top: 2px solid var(--tc, var(--line)); }
 /* each tool has its own colour: tab card, buttons, drop zone and panel edges follow it */
 .tab[data-tool="weekly"], #tool-weekly { --tc: var(--c-weekly); }
 .tab[data-tool="tltkh"], #tool-tltkh { --tc: var(--c-tltkh); }
@@ -190,17 +194,26 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
     <section class="panel">
       <h2>2. Үүсгэх</h2>
       <div class="row">
-        <label>Хүлээлтийг тоолох өдөр: <input type="text" id="z-today" placeholder="автомат"></label>
         <button class="btn primary" id="z-go" disabled>Үүсгэх</button>
         <span id="z-status" class="sub" style="margin:0"></span>
       </div>
-      <p class="sub" style="margin:6px 0 0;font-size:13px">Хоосон орхивол файлын хамгийн сүүлийн хүсэлтийн өдрийг авна. Өөр өдөр бол YYYY-MM-DD хэлбэрээр бичнэ.</p>
+      <p class="sub" style="margin:6px 0 0;font-size:13px">Excel: Sheet1 (pivot), Sheet2 (тайлан хүснэгт), эх sheet өөрчлөлтгүй.</p>
       <div id="z-result"></div>
     </section>
     <section class="panel" id="z-preview" hidden>
-      <h2>3. Тайлан</h2>
+      <h2>3. Имэйлийн драфт</h2>
+      <div class="row" style="margin-bottom:10px">
+        <label>УХ-Засварын хэсэгт засвар хүлээлгэнд байгаа чирэгч: <input type="text" id="z-wait" class="wide" style="width:70px" inputmode="numeric" placeholder="тоо"></label>
+        <button class="btn primary" id="z-copy">📋 Имэйл хуулах</button>
+        <span id="z-copied" class="sub" style="margin:0"></span>
+      </div>
+      <div id="z-mail" class="mail" contenteditable="true" spellcheck="false"></div>
+      <p class="sub" style="margin:8px 0 0;font-size:13px">«Имэйл хуулах» дараад Outlook / Gmail-д <b>Ctrl+V</b> хийнэ. Драфт дотор шууд засаж болно. Чирэгчийн тоог хоосон орхивол тэр мөр орохгүй.</p>
+    </section>
+    <section class="panel" id="z-dup" hidden>
+      <h2>4. Давхардал</h2>
       <div class="stats" id="z-stats"></div>
-      <div class="tablewrap"><table class="report" id="z-table"></table></div>
+      <div id="z-duplist"></div>
     </section>
   </div>
 
@@ -572,9 +585,8 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
   $("z-pick").onclick = function () { $("z-file").click(); };
 
   $("z-go").onclick = async function () {
-    var today = $("z-today").value.trim();
-    if (today && !/^\d{4}-\d{2}-\d{2}$/.test(today)) { show("z-result", "bad", "Өдрийг YYYY-MM-DD хэлбэрээр бичнэ үү. Жишээ нь 2026-09-27"); return; }
-    $("z-go").disabled = true; $("z-preview").hidden = true; $("z-result").innerHTML = "";
+    var today = "";
+    $("z-go").disabled = true; $("z-preview").hidden = true; $("z-dup").hidden = true; $("z-result").innerHTML = "";
     $("z-status").textContent = "Уншиж байна…";
     try {
       var input = await read(zfile);
@@ -597,17 +609,16 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
       explainButton(ok, "Zasvaryn_huselt_tailbar_" + mmdd + ".xlsx", [
         { name: "Тайлбар", widths: [26, 110], rows: [
           ["Засварын хүсэлтийн тайлбар", "Эх файл: " + zfile.name],
-          ["Хүлээлтийг тоолсон өдөр", res.today + (today ? " (та өгсөн)" : " (файлын хамгийн сүүлийн хүсэлтийн өдөр)")],
           [],
           ["Sheet", "Хэрхэн бодсон"],
-          ["Тайлан", "Мөр: Засварын байршил → Үйлчилгээ. Багана: Хүсэлт гаргасан өдөр. Нүд: тухайн байршил, үйлчилгээ, өдрийн хүсэлтийн тоо. Хоосон үйлчилгээг харуулаагүй"],
-          ["Pivot", "Засварын төрөл / байршил / үйлчилгээ / хоногоор бүлэглэсэн тоо"],
-          ["Хүлээлт", "Хоног = " + res.today + " − Хүсэлт гаргасан өдөр. Бүлэг: Өнөөдөр (0), 1–3, 4–7, 8+ хоног"],
+          ["Sheet1", "Pivot: Count of Засварын төрөл. Мөр: Засварын байршил → Үйлчилгээ ((blank) = үйлчилгээ хоосон). Багана: Хүсэлт гаргасан өдөр"],
+          ["Sheet2", "D5-аас: байршил (үйлчилгээтэй бол тод хөх), үйлчилгээ (цайвар хөх), өдөр бүрийн хүсэлтийн тоо, «Хүсэлт» нийт, «Нийт хүсэлт» мөр. Хоосон үйлчилгээг тусдаа мөр болгоогүй"],
           ["Эх sheet", "Өөрчлөөгүй, хэвээр"],
+          ["Т/Х -ийн тоо", res.techCount + " = давхардаагүй Техникийн №-ийн тоо (" + res.reqs.length + " хүсэлтээс)"],
           ["Алгассан мөр", res.skipped ? res.skipped + " (нийт дүнгийн эсвэл огноогүй мөр)" : "алга"]
         ] },
-        { name: "Хүсэлт тус бүр", widths: [14, 16, 16, 16, 12, 8, 12], rows: [["Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлтийн өдөр", "Хоног", "Бүлэг"]]
-          .concat(res.reqs.map(function (q) { return [q.tech, q.type, q.loc, q.srv, q.day, q.days, res.bucketOf(q)]; })) }
+        { name: "Хүсэлт тус бүр", widths: [14, 16, 16, 16, 12, 60], rows: [["Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлтийн өдөр", "Тайлбар"]]
+          .concat(res.reqs.map(function (q) { return [q.tech, q.type, q.loc, q.srv, q.day, q.desc]; })) }
       ]);
       if (res.skipped) show("z-result", "warn", res.skipped + " мөрийг алгассан (нийт дүнгийн мөр эсвэл огноогүй мөр).", true);
       renderZasvar(res);
@@ -618,27 +629,59 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
       $("z-go").disabled = !zfile;
     }
   };
-  function renderZasvar(res) {
-    var w = res.waiting;
-    $("z-stats").innerHTML = [
-      ["Нийт хүсэлт", res.reqs.length, ""],
-      ["Өнөөдөр", w["Өнөөдөр"] || 0, ""],
-      ["1–3 хоног", w["1–3 хоног"] || 0, ""],
-      ["4–7 хоног", w["4–7 хоног"] || 0, ""],
-      ["8+ хоног", w["8+ хоног"] || 0, (w["8+ хоног"] || 0) ? "hot" : ""]
-    ].map(function (s) { return '<div class="stat ' + s[2] + '"><b>' + s[1] + "</b><span>" + esc(s[0]) + "</span></div>"; }).join("");
+  /* Email draft exactly like the team's daily mail: greeting, totals, the coloured table. */
+  var zres = null;
+  function zTableHtml(res) {
     var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     var lab = function (k) { var p = k.split("-"); return p[2] + "-" + MON[+p[1] - 1]; };
-    var h = '<tr class="navy"><td>Засварын төрөл</td>' + res.days.map(function (d) { return "<td>" + lab(d) + "</td>"; }).join("") + "<td>Хүсэлт</td></tr>";
+    var C = { navy: ["#203864", "#ffffff", 700], blue: ["#2F5597", "#ffffff", 700], light: ["#8FAADC", "#000000", 400] };
+    var td = function (cls, v, first) { var c = C[cls];
+      return '<td style="background:' + c[0] + ";color:" + c[1] + ";font-weight:" + c[2] + ";border:1px solid #000;padding:1px 6px;text-align:center;vertical-align:middle;font-family:Calibri,Arial,sans-serif;font-size:11pt;" +
+        (first ? "width:140px;" : "width:70px;") + '">' + (v === "" || v == null ? "&nbsp;" : esc(v)) + "</td>"; };
     var hasServices = {};
     res.table.forEach(function (row, i) { if (row.loc && res.table[i + 1] && !res.table[i + 1].loc && !res.table[i + 1].total) hasServices[i] = 1; });
+    var h = "<tr>" + td("navy", "Засварын төрөл", 1) + res.days.map(function (d) { return td("navy", lab(d)); }).join("") + td("navy", "Хүсэлт") + "</tr>";
     res.table.forEach(function (row, i) {
       var cls = row.total ? "navy" : row.loc && hasServices[i] ? "blue" : "light";
       var c = {}; row.list.forEach(function (q) { c[q.day] = (c[q.day] || 0) + 1; });
-      h += '<tr class="' + cls + '"><td>' + esc(row.label) + "</td>" + res.days.map(function (d) { return "<td>" + (c[d] || "") + "</td>"; }).join("") + "<td>" + row.list.length + "</td></tr>";
+      h += "<tr>" + td(cls, row.label, 1) + res.days.map(function (d) { return td(cls, c[d] || ""); }).join("") + td(cls, row.list.length) + "</tr>";
     });
-    $("z-table").innerHTML = h;
+    return '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt">' + h + "</table>";
+  }
+  function zMail() {
+    if (!zres) return;
+    var n = $("z-wait").value.trim(), p = function (t) { return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' + (t ? esc(t) : "<br>") + "</div>"; };
+    $("z-mail").innerHTML = p("Өглөөний мэнд.") + p("") + p("Тээврийн хэрэгслийн засварын хүсэлтийн мэдээлэл хүргүүлж байна.") +
+      (n ? p("УХ-Засварын хэсэгт " + n + " чирэгч засвар хүлээлгэнд байна.") : "") + p("") +
+      p("Нийт хүсэлт-" + zres.reqs.length) + p("Т/Х -ийн тоо-" + zres.techCount) + p("") + zTableHtml(zres);
+  }
+  try { $("z-wait").value = localStorage.getItem("zWait") || ""; } catch (e) { /* storage unavailable */ }
+  $("z-wait").oninput = function () { try { localStorage.setItem("zWait", $("z-wait").value.trim()); } catch (e) { /* storage unavailable */ } zMail(); };
+  $("z-copy").onclick = function () {
+    var box = $("z-mail"), sel = window.getSelection(), r = document.createRange();
+    r.selectNodeContents(box); sel.removeAllRanges(); sel.addRange(r);
+    var ok = false; try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    sel.removeAllRanges();
+    $("z-copied").textContent = ok ? "Хууллаа ✓ Имэйлдээ Ctrl+V хийнэ үү" : "Хуулж чадсангүй — драфтыг хулганаар сонгоод Ctrl+C хийнэ үү";
+    setTimeout(function () { $("z-copied").textContent = ""; }, 4000);
+  };
+  function renderZasvar(res) {
+    zres = res; zMail();
     $("z-preview").hidden = false;
+    var nd = res.dups.reduce(function (a, d) { return a + d.list.length; }, 0);
+    $("z-stats").innerHTML = [
+      ["Нийт хүсэлт", res.reqs.length, ""],
+      ["Т/Х -ийн тоо", res.techCount, ""],
+      ["Давхардсан Т/Х", res.dups.length, res.dups.length ? "hot" : ""],
+      ["Давхардсан хүсэлт", nd, nd ? "hot" : ""]
+    ].map(function (s) { return '<div class="stat ' + s[2] + '"><b>' + s[1] + "</b><span>" + esc(s[0]) + "</span></div>"; }).join("");
+    $("z-duplist").innerHTML = res.dups.length
+      ? '<div class="tablewrap"><table class="plain"><thead><tr><th>Техникийн №</th><th>Хүсэлт</th><th>Өдөр</th><th>Засварын төрөл</th><th>Байршил</th><th>Үйлчилгээ</th><th>Тайлбар</th></tr></thead><tbody>' +
+        res.dups.map(function (d) { return d.list.map(function (q, i) {
+          return '<tr class="' + (i ? "" : "dupfirst") + '"><td>' + (i ? "" : "<b>" + esc(d.tech) + "</b>") + "</td><td>" + (i ? "" : d.list.length) + "</td><td>" + esc(q.day) + "</td><td>" + esc(q.type) + "</td><td>" + esc(q.loc) + "</td><td>" + esc(q.srv === "(хоосон)" ? "" : q.srv) + "</td><td>" + esc(q.desc) + "</td></tr>"; }).join(""); }).join("") +
+        "</tbody></table></div>"
+      : '<div class="msg ok">Давхардсан техник алга: ' + res.reqs.length + " хүсэлт = " + res.techCount + " Т/Х.</div>";
+    $("z-dup").hidden = false;
   }
 
   /* ================= MEDEE ================= */

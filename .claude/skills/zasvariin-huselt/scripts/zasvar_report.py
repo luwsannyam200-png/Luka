@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Repair request report from the Mine2TL export ("засвар ...rqst.xlsx").
 
-Output workbook:
-  Тайлан    rows Засварын байршил > Үйлчилгээ, columns = request day (report layout)
-  Pivot     rows Засварын төрөл > Засварын байршил > Үйлчилгээ, columns = request day, values = count
-  Хүлээлт   same rows, columns = days waiting (0, 1-3, 4-7, 8+)
+Output workbook, laid out like the team's final report (nothing more):
+  Sheet1  pivot layout: Count of Засварын төрөл, rows байршил > үйлчилгээ ((blank) last), columns request day
+  Sheet2  report table at D5: location (navy / blue) > service (light), "Хүсэлт" total, "Нийт хүсэлт" row
   + the original export sheet(s), unchanged
+JSON on stdout also has the e-mail draft numbers: requests, tech_count (unique Техникийн №)
+and duplicates (same truck with more than one request).
 
 Usage:
-  zasvar_report.py --input "засвар 9-26rqst.xlsx" --out "Засварын хүсэлт_09.27.xlsx" [--today 2026-09-27]
---today defaults to the day of the latest request in the file.
+  zasvar_report.py --input "засвар 10-18rqst.xlsx" --out "Zasvaryn_huselt_10.18.xlsx"
 """
 import argparse
 import datetime as dt
@@ -23,13 +23,21 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 BLANK = "(хоосон)"
-BUCKETS = [("Өнөөдөр", 0, 0), ("1–3 хоног", 1, 3), ("4–7 хоног", 4, 7), ("8+ хоног", 8, 10 ** 6)]
 
-HEAD = PatternFill("solid", fgColor="B4E5D2")
-SUB1 = PatternFill("solid", fgColor="DDF3EA")
-SUB2 = PatternFill("solid", fgColor="F0FAF5")
-RED = PatternFill("solid", fgColor="F8D2CE")
-THIN = Border(bottom=Side(style="thin", color="C8D3CE"))
+# Office accent 5 (4472C4) with the report's tints: -50 %, -25 %, +40 %
+NAVY = PatternFill("solid", fgColor="203864")
+BLUE = PatternFill("solid", fgColor="2F5597")
+LIGHT = PatternFill("solid", fgColor="8FAADC")
+PV = PatternFill("solid", fgColor="DDEBF7")
+GRID = Border(*(Side(style="thin", color="000000"),) * 4)
+PV_UNDER = Border(bottom=Side(style="thin", color="9BC2E6"))
+PV_OVER = Border(top=Side(style="thin", color="9BC2E6"))
+MN_ABC = "абвгдеёжзийклмноөпрстуүфхцчшщъыьэюя"
+
+
+def mn_key(s):
+    """Mongolian alphabetical order (Ө after О, Ү after У), as Excel sorts it."""
+    return "".join(chr(0x2000 + MN_ABC.index(c)) if c in MN_ABC else c for c in str(s).lower())
 
 
 def norm(s):
@@ -108,77 +116,52 @@ def read_requests(path):
     return out, skipped
 
 
-def header(ws, row, values, widths=None):
-    for c, v in enumerate(values, 1):
-        cell = ws.cell(row, c, v)
-        cell.font = Font(bold=True)
-        cell.fill = HEAD
-        cell.alignment = Alignment(horizontal="center" if c > 1 else "left", vertical="center", wrap_text=True)
-    if widths:
-        for c, w in enumerate(widths, 1):
-            ws.column_dimensions[get_column_letter(c)].width = w
+def day_label(d):
+    return d.strftime("%d-%b")
 
 
-def tree_table(ws, reqs, col_keys, col_of, title_cells, first_width=32):
-    """Rows: type > location > service, with subtotals; columns from col_keys."""
-    header(ws, 1, title_cells + ["Нийт"], [first_width] + [9] * (len(col_keys) + 1))
-    ws.freeze_panes = "B2"
-    tree = defaultdict(lambda: defaultdict(lambda: defaultdict(Counter)))
-    for q in reqs:
-        tree[q["type"]][q["loc"]][q["srv"]][col_of(q)] += 1
+def pivot_sheet(ws, reqs, days):
+    """Values laid out as the Excel PivotTable "Count of Засварын төрөл"."""
+    last = len(days) + 2
+    for c in range(1, last + 1):
+        ws.cell(1, c).fill = PV
+        ws.cell(1, c).border = PV_UNDER
+        ws.cell(1, c).font = Font(bold=True)
+    ws.cell(1, 1, "Count of Засварын төрөл")
+    ws.cell(1, 2, "Column Labels")
+    for c, v in enumerate(["Row Labels"] + [day_label(d) for d in days] + ["Grand Total"], 1):
+        cell = ws.cell(2, c, v)
+        cell.fill, cell.border, cell.font = PV, PV_UNDER, Font(bold=True)
+        cell.alignment = Alignment(horizontal="left")
+    r = 3
 
-    def write(r, label, counter, level):
-        ws.cell(r, 1, ("    " * level) + label)
-        total = 0
-        for c, k in enumerate(col_keys, 2):
-            v = counter.get(k, 0)
-            total += v
-            if v:
-                ws.cell(r, c, v)
-        ws.cell(r, len(col_keys) + 2, total)
-        fill = SUB1 if level == 0 else SUB2 if level == 1 else None
-        for c in range(1, len(col_keys) + 3):
-            cell = ws.cell(r, c)
-            cell.border = THIN
-            if fill:
-                cell.fill = fill
-            if level < 2:
-                cell.font = Font(bold=True)
-            if c > 1:
-                cell.alignment = Alignment(horizontal="center")
-
-    r = 2
-    for t in sorted(tree):
-        t_sum = Counter()
-        for loc in tree[t].values():
-            for srv in loc.values():
-                t_sum.update(srv)
-        write(r, t, t_sum, 0)
+    def put(label, lst, level, total=False):
+        nonlocal r
+        cnt = Counter(q["req"].date() for q in lst)
+        vals = [label] + [cnt.get(d) or None for d in days] + [len(lst)]
+        for c, v in enumerate(vals, 1):
+            cell = ws.cell(r, c, v)
+            cell.font = Font(bold=level == 0)
+            if total:
+                cell.fill, cell.border = PV, PV_OVER
+        ws.cell(r, 1).alignment = Alignment(horizontal="left", indent=level)
         r += 1
-        for loc in sorted(tree[t]):
-            l_sum = Counter()
-            for srv in tree[t][loc].values():
-                l_sum.update(srv)
-            write(r, loc, l_sum, 1)
-            r += 1
-            # Blank services count in the location row but are not listed.
-            for srv in sorted(x for x in tree[t][loc] if x != BLANK):
-                write(r, srv, tree[t][loc][srv], 2)
-                r += 1
-    g = Counter(col_of(q) for q in reqs)
-    write(r, "Нийт", g, 0)
-    for c in range(1, len(col_keys) + 3):
-        ws.cell(r, c).fill = HEAD
-    return r
+
+    for loc in sorted({q["loc"] for q in reqs}, key=mn_key):
+        in_loc = [q for q in reqs if q["loc"] == loc]
+        put(loc, in_loc, 0)
+        srv = sorted({q["srv"] for q in in_loc if q["srv"] != BLANK}, key=mn_key)
+        if any(q["srv"] == BLANK for q in in_loc):
+            srv.append(BLANK)
+        for s in srv:
+            put("(blank)" if s == BLANK else s, [q for q in in_loc if q["srv"] == s], 1)
+    put("Grand Total", reqs, 0, total=True)
+    widths = [23.21875, 15.5546875] + [6.5546875] * (len(days) - 1) + [10.77734375]
+    for c, w in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(c)].width = w
 
 
-NAVY = PatternFill("solid", fgColor="1F3864")
-BLUE = PatternFill("solid", fgColor="2F5597")
-LIGHT = PatternFill("solid", fgColor="8EA9DB")
-GRID = Border(*(Side(style="thin", color="1F3864"),) * 4)
-
-
-def report_table(ws, reqs, days, top=4, left=3):
+def report_table(ws, reqs, days, top=5, left=4):
     """Presentation table: location (dark) > service (light) rows, request-day
     columns, "Хүсэлт" total column and "Нийт хүсэлт" row. Blank services are
     counted in the location row but not listed."""
@@ -187,8 +170,7 @@ def report_table(ws, reqs, days, top=4, left=3):
         cnt[q["loc"]][q["srv"]][q["req"].date()] += 1
     ncol = len(days) + 2
 
-    def put(r, label, counter, fill, white):
-        vals = [label] + [counter.get(d, 0) or None for d in days] + [sum(counter.values())]
+    def put(r, vals, fill, white):
         for i, v in enumerate(vals):
             c = ws.cell(r, left + i, v)
             c.fill = fill
@@ -196,26 +178,24 @@ def report_table(ws, reqs, days, top=4, left=3):
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.font = Font(bold=white, color="FFFFFF" if white else "000000")
 
-    put(top, "Засварын төрөл", {}, NAVY, True)
-    for i, d in enumerate(days, 1):
-        ws.cell(top, left + i, d.strftime("%d-%b"))
-    ws.cell(top, left + ncol - 1, "Хүсэлт")
+    def row(label, counter):
+        return [label] + [counter.get(d, 0) or None for d in days] + [sum(counter.values())]
+
+    put(top, ["Засварын төрөл"] + [day_label(d) for d in days] + ["Хүсэлт"], NAVY, True)
     r = top + 1
-    for loc in sorted(cnt):
+    for loc in sorted(cnt, key=mn_key):
         total = Counter()
         for s in cnt[loc].values():
             total.update(s)
-        services = sorted(s for s in cnt[loc] if s != BLANK)
+        services = sorted((s for s in cnt[loc] if s != BLANK), key=mn_key)
         # A location with no listed services (e.g. Замд) is styled like a service row.
-        put(r, loc, total, BLUE if services else LIGHT, bool(services))
+        put(r, row(loc, total), BLUE if services else LIGHT, bool(services))
         r += 1
         for srv in services:
-            put(r, srv, cnt[loc][srv], LIGHT, False)
+            put(r, row(srv, cnt[loc][srv]), LIGHT, False)
             r += 1
-    put(r, "Нийт хүсэлт", Counter(q["req"].date() for q in reqs), NAVY, True)
-    ws.column_dimensions[get_column_letter(left)].width = 20
-    for i in range(1, ncol):
-        ws.column_dimensions[get_column_letter(left + i)].width = 10
+    put(r, row("Нийт хүсэлт", Counter(q["req"].date() for q in reqs)), NAVY, True)
+    ws.column_dimensions[get_column_letter(left)].width = 15.88671875
     return r
 
 
@@ -223,15 +203,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--input", required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--today")
     a = ap.parse_args()
 
     reqs, skipped = read_requests(a.input)
     if not reqs:
         sys.exit("Засварын хүсэлт олдсонгүй")
-    today = dt.date.fromisoformat(a.today) if a.today else max(q["req"] for q in reqs).date()
-    for q in reqs:
-        q["days"] = (today - q["req"].date()).days
 
     # Keep the original export as-is and put the report sheets in front of it.
     wb = openpyxl.load_workbook(a.input)
@@ -244,35 +220,24 @@ def main():
         return n
 
     days = sorted({q["req"].date() for q in reqs})
-
-    # 1. Тайлан: presentation table (location > service by request day)
-    ws0 = wb.create_sheet(free("Тайлан"), 0)
-    report_table(ws0, reqs, days)
-
-    # 2. Pivot: same with Засварын төрөл as the top level
-    ws = wb.create_sheet(free("Pivot"), 1)
-    tree_table(ws, reqs, days, lambda q: q["req"].date(),
-               ["Засварын төрөл / байршил / үйлчилгээ"] + [d.strftime("%d-%b") for d in days])
-
-    # 3. Хүлээлт: columns = waiting buckets
-    ws2 = wb.create_sheet(free("Хүлээлт"), 2)
-    labels = [b[0] for b in BUCKETS]
-    bucket = lambda q: next(b[0] for b in BUCKETS if b[1] <= q["days"] <= b[2])
-    last = tree_table(ws2, reqs, labels, bucket, [f"Өнөөдөр: {today:%Y-%m-%d}"] + labels)
-    for r in range(2, last + 1):
-        c = ws2.cell(r, 1 + len(labels))  # 8+ column
-        if c.value:
-            c.fill = RED
-
+    pivot_sheet(wb.create_sheet(free("Sheet1"), 0), reqs, days)
+    ws_rep = wb.create_sheet(free("Sheet2"), 1)
+    report_table(ws_rep, reqs, days)
     for w in wb.worksheets:
-        w.sheet_view.tabSelected = w is ws0
-    wb.active = 0
+        w.sheet_view.tabSelected = w is ws_rep
+    wb.active = 1
     wb.save(a.out)
+
+    by_tech = defaultdict(list)
+    for q in reqs:
+        by_tech[q["tech"]].append(q)
+    dups = {t: [{"day": str(q["req"].date()), "type": q["type"], "loc": q["loc"], "srv": "" if q["srv"] == BLANK else q["srv"], "desc": q["desc"]} for q in l]
+            for t, l in sorted(by_tech.items(), key=lambda x: mn_key(x[0])) if len(l) > 1}
     json.dump({
-        "requests": len(reqs), "skipped_rows": skipped, "today": str(today),
-        "by_type": Counter(q["type"] for q in reqs), "by_location": Counter(q["loc"] for q in reqs),
-        "by_service": Counter(q["srv"] for q in reqs), "by_day": {str(d): sum(1 for q in reqs if q["req"].date() == d) for d in days},
-        "waiting": Counter(bucket(q) for q in reqs), "source_sheets": src_names,
+        "requests": len(reqs), "tech_count": len(by_tech), "skipped_rows": skipped,
+        "by_location": Counter(q["loc"] for q in reqs), "by_service": Counter(q["srv"] for q in reqs),
+        "by_day": {str(d): sum(1 for q in reqs if q["req"].date() == d) for d in days},
+        "duplicates": dups, "source_sheets": src_names,
     }, sys.stdout, ensure_ascii=False, indent=1)
     print()
 

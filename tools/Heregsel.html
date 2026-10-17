@@ -105,6 +105,10 @@ input.wide { width: 170px; }
 .chip-x { border: 0; background: transparent; color: inherit; font: inherit; font-weight: 700; margin-left: 6px; padding: 0 2px; cursor: pointer; opacity: .6; }
 .chip-x:hover { opacity: 1; color: var(--bad); }
 [hidden] { display: none !important; }
+.mail { background: #fff; color: #000; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; font: 11pt Calibri, Carlito, Arial, sans-serif; overflow-x: auto; }
+.mail table { width: auto; font-size: 11pt; }
+.mail td { position: static; white-space: nowrap; }
+tr.dupfirst td { border-top: 2px solid var(--tc, var(--line)); }
 /* each tool has its own colour: tab card, buttons, drop zone and panel edges follow it */
 .tab[data-tool="weekly"], #tool-weekly { --tc: var(--c-weekly); }
 .tab[data-tool="tltkh"], #tool-tltkh { --tc: var(--c-tltkh); }
@@ -190,17 +194,26 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
     <section class="panel">
       <h2>2. Үүсгэх</h2>
       <div class="row">
-        <label>Хүлээлтийг тоолох өдөр: <input type="text" id="z-today" placeholder="автомат"></label>
         <button class="btn primary" id="z-go" disabled>Үүсгэх</button>
         <span id="z-status" class="sub" style="margin:0"></span>
       </div>
-      <p class="sub" style="margin:6px 0 0;font-size:13px">Хоосон орхивол файлын хамгийн сүүлийн хүсэлтийн өдрийг авна. Өөр өдөр бол YYYY-MM-DD хэлбэрээр бичнэ.</p>
+      <p class="sub" style="margin:6px 0 0;font-size:13px">Excel: Sheet1 (pivot), Sheet2 (тайлан хүснэгт), эх sheet өөрчлөлтгүй.</p>
       <div id="z-result"></div>
     </section>
     <section class="panel" id="z-preview" hidden>
-      <h2>3. Тайлан</h2>
+      <h2>3. Имэйлийн драфт</h2>
+      <div class="row" style="margin-bottom:10px">
+        <label>УХ-Засварын хэсэгт засвар хүлээлгэнд байгаа чирэгч: <input type="text" id="z-wait" class="wide" style="width:70px" inputmode="numeric" placeholder="тоо"></label>
+        <button class="btn primary" id="z-copy">📋 Имэйл хуулах</button>
+        <span id="z-copied" class="sub" style="margin:0"></span>
+      </div>
+      <div id="z-mail" class="mail" contenteditable="true" spellcheck="false"></div>
+      <p class="sub" style="margin:8px 0 0;font-size:13px">«Имэйл хуулах» дараад Outlook / Gmail-д <b>Ctrl+V</b> хийнэ. Драфт дотор шууд засаж болно. Чирэгчийн тоог хоосон орхивол тэр мөр орохгүй.</p>
+    </section>
+    <section class="panel" id="z-dup" hidden>
+      <h2>4. Давхардал</h2>
       <div class="stats" id="z-stats"></div>
-      <div class="tablewrap"><table class="report" id="z-table"></table></div>
+      <div id="z-duplist"></div>
     </section>
   </div>
 
@@ -736,8 +749,10 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 </script>
 <script>/* Repair request report (Mine2TL export): browser + Node.
  * Port of .claude/skills/zasvariin-huselt/scripts/zasvar_report.py.
- * The export workbook is kept byte-identical; the Тайлан, Pivot and Хүлээлт
- * sheets are injected in front of it at the XML level with their own styles. */
+ * The export workbook is kept byte-identical; two sheets are injected in front
+ * of it at the XML level, laid out like the team's final report:
+ *   Sheet1  pivot layout (Count of Засварын төрөл: байршил > үйлчилгээ × өдөр)
+ *   Sheet2  report table at D5 (navy / blue / light), "Нийт хүсэлт" last */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
     module.exports = factory(require("jszip"), require("xlsx"));
@@ -750,12 +765,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   var BLANK = "(хоосон)";
   var BUCKETS = [["Өнөөдөр", 0, 0], ["1–3 хоног", 1, 3], ["4–7 хоног", 4, 7], ["8+ хоног", 8, 1e9]];
   var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var REP_TOP = 5, REP_LEFT = 4; // report table starts at D5
   var NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 
   function norm(s) { return String(s == null ? "" : s).replace(/\s+/g, " ").trim().toLowerCase(); }
   function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
   function colLetter(n) { var s = ""; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
-  function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+  // Mongolian alphabetical order (Ө after О, Ү after У), as Excel sorts it
+  var MN_ABC = "абвгдеёжзийклмноөпрстуүфхцчшщъыьэюя";
+  function mnKey(s) { return String(s).toLowerCase().replace(/[а-яёөү]/g, function (c) { return String.fromCharCode(0x2000 + MN_ABC.indexOf(c)); }); }
+  function cmp(a, b) { a = mnKey(a); b = mnKey(b); return a < b ? -1 : a > b ? 1 : 0; }
 
   /* Dates as "YYYY-MM-DD" keys; Excel serials are converted without time zones. */
   function dayKey(v) {
@@ -799,6 +818,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       srv: find(function (n) { return n === "үйлчилгээ"; }, "Үйлчилгээ"),
       req: find(function (n) { return n.indexOf("хүсэлт гаргасан") === 0; }, "Хүсэлт гаргасан огноо")
     };
+    var descIx = found.names.indexOf("тайлбар");
     var out = [], skipped = 0;
     found.rows.slice(found.hi + 1).forEach(function (r) {
       if (r[ix.tech] == null || r[ix.type] == null) { if (r.some(function (c) { return c != null; })) skipped++; return; }
@@ -809,7 +829,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         tech: String(r[ix.tech]).trim(),
         loc: String(r[ix.loc] == null ? "" : r[ix.loc]).trim() || BLANK,
         srv: String(r[ix.srv] == null ? "" : r[ix.srv]).trim() || BLANK,
-        day: day
+        day: day,
+        desc: descIx >= 0 && r[descIx] != null ? String(r[descIx]).trim() : ""
       });
     });
     return { reqs: out, skipped: skipped };
@@ -825,32 +846,32 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       styles = styles.replace(m[0], "<" + tag + ' count="' + (base + items.length) + '"' + m[2] + ">" + m[3] + items.join("") + "</" + tag + ">");
       return base;
     }
-    function font(bold, color) { return "<font>" + (bold ? "<b/>" : "") + '<sz val="11"/><color rgb="FF' + color + '"/><name val="Calibri"/><family val="2"/></font>'; }
+    function font(bold, color) { return "<font>" + (bold ? "<b/>" : "") + '<sz val="11"/><color rgb="FF' + color + '"/><name val="Calibri"/><family val="2"/><scheme val="minor"/></font>'; }
     function fill(c) { return '<fill><patternFill patternType="solid"><fgColor rgb="FF' + c + '"/><bgColor indexed="64"/></patternFill></fill>'; }
-    var f0 = append("fonts", [font(true, "FFFFFF"), font(true, "000000"), font(false, "000000")]);
-    var F = { boldWhite: f0, bold: f0 + 1, plain: f0 + 2 };
-    var colors = { navy: "1F3864", blue: "2F5597", light: "8EA9DB", head: "B4E5D2", sub1: "DDF3EA", sub2: "F0FAF5", red: "F8D2CE" };
+    var f0 = append("fonts", [font(true, "FFFFFF"), font(false, "000000"), font(true, "000000")]);
+    var F = { boldWhite: f0, plain: f0 + 1, bold: f0 + 2 };
+    // Office accent 5 (4472C4) with the report's tints: −50 %, −25 %, +40 %; pivot header light blue
+    var colors = { navy: "203864", blue: "2F5597", light: "8FAADC", pv: "DDEBF7" };
     var keys = Object.keys(colors);
     var p0 = append("fills", keys.map(function (k) { return fill(colors[k]); }));
     var P = {}; keys.forEach(function (k, i) { P[k] = p0 + i; });
     var side = function (n, c) { return "<" + n + ' style="thin"><color rgb="FF' + c + '"/></' + n + ">"; };
     var b0 = append("borders", [
-      "<border>" + side("left", "1F3864") + side("right", "1F3864") + side("top", "1F3864") + side("bottom", "1F3864") + "<diagonal/></border>",
-      "<border><left/><right/><top/>" + side("bottom", "C8D3CE") + "<diagonal/></border>"
+      "<border>" + side("left", "000000") + side("right", "000000") + side("top", "000000") + side("bottom", "000000") + "<diagonal/></border>",
+      "<border><left/><right/><top/>" + side("bottom", "9BC2E6") + "<diagonal/></border>",
+      "<border><left/><right/>" + side("top", "9BC2E6") + "<bottom/><diagonal/></border>"
     ]);
-    var B = { grid: b0, line: b0 + 1 };
+    var B = { grid: b0, under: b0 + 1, over: b0 + 2 };
+    // [font, fill, border, horizontal, indent]
     var defs = {
       navy: [F.boldWhite, P.navy, B.grid, "center"], blue: [F.boldWhite, P.blue, B.grid, "center"], light: [F.plain, P.light, B.grid, "center"],
-      headL: [F.bold, P.head, B.line, "left"], headC: [F.bold, P.head, B.line, "center"],
-      sub1L: [F.bold, P.sub1, B.line, "left"], sub1C: [F.bold, P.sub1, B.line, "center"],
-      sub2L: [F.bold, P.sub2, B.line, "left"], sub2C: [F.bold, P.sub2, B.line, "center"],
-      leafL: [F.plain, 0, B.line, "left"], leafC: [F.plain, 0, B.line, "center"],
-      redB: [F.bold, P.red, B.line, "center"], red: [F.plain, P.red, B.line, "center"]
+      pvHead: [F.bold, P.pv, B.under, "left"], pvLoc: [F.bold, 0, 0, "left"], pvLocN: [F.bold, 0, 0, "general"],
+      pvSrv: [F.plain, 0, 0, "left", 1], pvN: [F.plain, 0, 0, "general"], pvTot: [F.bold, P.pv, B.over, "left"], pvTotN: [F.bold, P.pv, B.over, "general"]
     };
     var names = Object.keys(defs);
     var x0 = append("cellXfs", names.map(function (k) {
-      var d = defs[k];
-      return '<xf numFmtId="0" fontId="' + d[0] + '" fillId="' + d[1] + '" borderId="' + d[2] + '" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="' + d[3] + '" vertical="center" wrapText="1"/></xf>';
+      var d = defs[k], al = d[3] === "center" ? '<alignment horizontal="center" vertical="center"/>' : d[3] === "left" ? '<alignment horizontal="left"' + (d[4] ? ' indent="' + d[4] + '"' : "") + "/>" : "";
+      return '<xf numFmtId="0" fontId="' + d[0] + '" fillId="' + d[1] + '" borderId="' + d[2] + '" xfId="0" applyFont="1" applyFill="1" applyBorder="1"' + (al ? ' applyAlignment="1">' + al + "</xf>" : "/>");
     }));
     var X = {}; names.forEach(function (k, i) { X[k] = x0 + i; });
     return { styles: styles, X: X };
@@ -882,8 +903,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   function uniq(list) { return list.filter(function (x, i) { return list.indexOf(x) === i; }).sort(cmp); }
 
   function reportSheet(reqs, days, X) {
-    var sh = new Sheet(), top = 4, left = 3, ncol = days.length + 2;
-    sh.cols[left - 1] = 20; for (var i = 1; i < ncol; i++) sh.cols[left - 1 + i] = 10;
+    var sh = new Sheet(), top = REP_TOP, left = REP_LEFT;
+    sh.cols[left - 1] = 15.88671875;
+    var ncol = days.length + 2;
     function put(r, label, list, style) {
       var c = counter(list, function (q) { return q.day; });
       sh.set(r, left, label, style);
@@ -909,38 +931,39 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return { sheet: sh, table: table };
   }
 
-  function treeSheet(reqs, keys, keyOf, titles, X, redLast) {
-    var sh = new Sheet();
-    sh.freeze = true;
-    sh.cols[0] = 32; for (var i = 1; i <= keys.length + 1; i++) sh.cols[i] = 9;
-    titles.concat(["Нийт"]).forEach(function (t, i) { sh.set(1, i + 1, t, i ? X.headC : X.headL); });
-    var r = 2;
-    function write(label, list, level, total) {
-      var c = counter(list, keyOf);
-      var L = total ? X.headL : level === 0 ? X.sub1L : level === 1 ? X.sub2L : X.leafL;
-      var C = total ? X.headC : level === 0 ? X.sub1C : level === 1 ? X.sub2C : X.leafC;
-      sh.set(r, 1, (total ? "" : "        ".slice(0, level * 4)) + label, L);
-      keys.forEach(function (k, i) {
-        var v = c[k] || null, st = C;
-        if (redLast && i === keys.length - 1 && v) st = level < 2 || total ? X.redB : X.red;
-        sh.set(r, i + 2, v, st);
-      });
-      sh.set(r, keys.length + 2, list.length, C);
-      r++;
+  /* Values laid out as the Excel PivotTable "Count of Засварын төрөл"
+     (rows: байршил > үйлчилгээ, columns: request day). */
+  function pivotSheet(reqs, days, X) {
+    var sh = new Sheet(), last = days.length + 2;
+    sh.cols = [23.21875, 15.5546875].concat(days.slice(1).map(function () { return 6.5546875; })).concat([10.77734375]);
+    sh.set(1, 1, "Count of Засварын төрөл", X.pvHead); sh.set(1, 2, "Column Labels", X.pvHead);
+    for (var c = 3; c <= last; c++) sh.set(1, c, null, X.pvHead);
+    sh.set(2, 1, "Row Labels", X.pvHead);
+    days.forEach(function (d, i) { sh.set(2, i + 2, dayLabel(d), X.pvHead); });
+    sh.set(2, last, "Grand Total", X.pvHead);
+    var r = 3;
+    function put(label, list, L, N) {
+      var cnt = counter(list, function (q) { return q.day; });
+      sh.set(r, 1, label, L);
+      days.forEach(function (d, i) { sh.set(r, i + 2, cnt[d] || null, N); });
+      sh.set(r, last, list.length, N); r++;
     }
-    uniq(reqs.map(function (q) { return q.type; })).forEach(function (t) {
-      var lt = reqs.filter(function (q) { return q.type === t; });
-      write(t, lt, 0);
-      uniq(lt.map(function (q) { return q.loc; })).forEach(function (loc) {
-        var ll = lt.filter(function (q) { return q.loc === loc; });
-        write(loc, ll, 1);
-        uniq(ll.map(function (q) { return q.srv; })).filter(function (s) { return s !== BLANK; }).forEach(function (s) {
-          write(s, ll.filter(function (q) { return q.srv === s; }), 2);
-        });
-      });
+    uniq(reqs.map(function (q) { return q.loc; })).forEach(function (loc) {
+      var inLoc = reqs.filter(function (q) { return q.loc === loc; });
+      put(loc, inLoc, X.pvLoc, X.pvLocN);
+      var srv = uniq(inLoc.map(function (q) { return q.srv; })).filter(function (s) { return s !== BLANK; });
+      if (inLoc.some(function (q) { return q.srv === BLANK; })) srv.push(BLANK);
+      srv.forEach(function (s) { put(s === BLANK ? "(blank)" : s, inLoc.filter(function (q) { return q.srv === s; }), X.pvSrv, X.pvN); });
     });
-    write("Нийт", reqs, 0, true);
+    put("Grand Total", reqs, X.pvTot, X.pvTotN);
     return sh;
+  }
+
+  /* Same truck (Техникийн №) with more than one request */
+  function duplicates(reqs) {
+    var by = {};
+    reqs.forEach(function (q) { (by[q.tech] = by[q.tech] || []).push(q); });
+    return Object.keys(by).filter(function (t) { return by[t].length > 1; }).sort(cmp).map(function (t) { return { tech: t, list: by[t] }; });
   }
 
   async function buildZasvar(opts) {
@@ -958,9 +981,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     var X = st.X;
     var rep = reportSheet(reqs, days, X);
     var sheets = [
-      { name: "Тайлан", xml: rep.sheet.xml(true) },
-      { name: "Pivot", xml: treeSheet(reqs, days, function (q) { return q.day; }, ["Засварын төрөл / байршил / үйлчилгээ"].concat(days.map(dayLabel)), X).xml(false) },
-      { name: "Хүлээлт", xml: treeSheet(reqs, BUCKETS.map(function (b) { return b[0]; }), bucketOf, ["Өнөөдөр: " + today].concat(BUCKETS.map(function (b) { return b[0]; })), X, true).xml(false) }
+      { name: "Sheet1", xml: pivotSheet(reqs, days, X).xml(false) },
+      { name: "Sheet2", xml: rep.sheet.xml(true) }
     ];
 
     var wbx = await zip.file("xl/workbook.xml").async("string");
@@ -987,7 +1009,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     // New sheets go first; shift sheet-local defined names by the number of inserted sheets.
     wbx = wbx.replace(/<sheets>/, "<sheets>" + tags.join(""));
     wbx = wbx.replace(/localSheetId="(\d+)"/g, function (_, i) { return 'localSheetId="' + (+i + sheets.length) + '"'; });
-    if (/activeTab="\d+"/.test(wbx)) wbx = wbx.replace(/activeTab="\d+"/, 'activeTab="0"'); else wbx = wbx.replace(/<workbookView /, '<workbookView activeTab="0" ');
+    if (/activeTab="\d+"/.test(wbx)) wbx = wbx.replace(/activeTab="\d+"/, 'activeTab="1"'); else wbx = wbx.replace(/<workbookView /, '<workbookView activeTab="1" ');
     wbx = wbx.replace(/firstSheet="\d+"/, 'firstSheet="0"');
     zip.file("xl/workbook.xml", wbx);
     zip.file("xl/_rels/workbook.xml.rels", rels);
@@ -1003,7 +1025,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     return {
       bytes: bytes, reqs: reqs, days: days, today: today, skipped: read.skipped, table: rep.table,
       sheetNames: sheets.map(function (s) { return s.finalName; }),
-      waiting: counter(reqs, bucketOf), bucketOf: bucketOf
+      waiting: counter(reqs, bucketOf), bucketOf: bucketOf,
+      techCount: uniq(reqs.map(function (q) { return q.tech; })).length, dups: duplicates(reqs)
     };
   }
 
@@ -1026,23 +1049,23 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       if (!B) { problems.push("Эх sheet алга: " + s); return; }
       Object.keys(A).forEach(function (k) { if (k[0] !== "!" && (A[k].v !== (B[k] || {}).v)) problems.push(s + " " + k + " өөрчлөгдсөн"); });
     });
-    var t = wn.Sheets[res.sheetNames[0]];
+    var t = wn.Sheets[res.sheetNames[1]];
     if (!t) { problems.push("Тайлан sheet олдсонгүй"); return problems; }
     var v = function (col, row) { var c = t[colLetter(col) + row]; return c ? c.v : null; };
-    var ncol = res.days.length + 2, lastCol = 3 + ncol - 1, locSum = 0, r = 5, total = null;
-    if (v(3, 4) !== "Засварын төрөл" || v(lastCol, 4) !== "Хүсэлт") problems.push("Тайлан: гарчгийн мөр буруу");
-    for (; r < 5 + res.table.length; r++) {
+    var T = REP_TOP, L = REP_LEFT, ncol = res.days.length + 2, lastCol = L + ncol - 1, locSum = 0, r = T + 1, total = null;
+    if (v(L, T) !== "Засварын төрөл" || v(lastCol, T) !== "Хүсэлт") problems.push("Тайлан: гарчгийн мөр буруу");
+    for (; r < T + 1 + res.table.length; r++) {
       var sum = 0;
-      for (var col = 4; col < lastCol; col++) sum += v(col, r) || 0;
-      var entry = res.table[r - 5];
-      if (v(3, r) !== entry.label) problems.push("Тайлан: " + r + "-р мөрийн нэр буруу");
+      for (var col = L + 1; col < lastCol; col++) sum += v(col, r) || 0;
+      var entry = res.table[r - T - 1];
+      if (v(L, r) !== entry.label) problems.push("Тайлан: " + r + "-р мөрийн нэр буруу");
       if (sum !== v(lastCol, r) || v(lastCol, r) !== entry.list.length) problems.push('Тайлан: "' + entry.label + '" мөрийн нийлбэр буруу');
       if (entry.loc) locSum += v(lastCol, r);
       if (entry.total) total = v(lastCol, r);
     }
     if (total !== N) problems.push("Тайлан: нийт хүсэлт " + total + " ≠ " + N);
     if (locSum !== N) problems.push("Тайлан: байршлуудын нийлбэр " + locSum + " ≠ " + N);
-    [1, 2].forEach(function (k) {
+    [0].forEach(function (k) {
       var s = wn.Sheets[res.sheetNames[k]], rr = XLSX.utils.sheet_to_json(s, { header: 1, raw: true, defval: null });
       var lastRow = rr[rr.length - 1];
       if (lastRow[lastRow.length - 1] !== N) problems.push(res.sheetNames[k] + ": нийт " + lastRow[lastRow.length - 1] + " ≠ " + N);
@@ -2668,9 +2691,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   $("z-pick").onclick = function () { $("z-file").click(); };
 
   $("z-go").onclick = async function () {
-    var today = $("z-today").value.trim();
-    if (today && !/^\d{4}-\d{2}-\d{2}$/.test(today)) { show("z-result", "bad", "Өдрийг YYYY-MM-DD хэлбэрээр бичнэ үү. Жишээ нь 2026-09-27"); return; }
-    $("z-go").disabled = true; $("z-preview").hidden = true; $("z-result").innerHTML = "";
+    var today = "";
+    $("z-go").disabled = true; $("z-preview").hidden = true; $("z-dup").hidden = true; $("z-result").innerHTML = "";
     $("z-status").textContent = "Уншиж байна…";
     try {
       var input = await read(zfile);
@@ -2693,17 +2715,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       explainButton(ok, "Zasvaryn_huselt_tailbar_" + mmdd + ".xlsx", [
         { name: "Тайлбар", widths: [26, 110], rows: [
           ["Засварын хүсэлтийн тайлбар", "Эх файл: " + zfile.name],
-          ["Хүлээлтийг тоолсон өдөр", res.today + (today ? " (та өгсөн)" : " (файлын хамгийн сүүлийн хүсэлтийн өдөр)")],
           [],
           ["Sheet", "Хэрхэн бодсон"],
-          ["Тайлан", "Мөр: Засварын байршил → Үйлчилгээ. Багана: Хүсэлт гаргасан өдөр. Нүд: тухайн байршил, үйлчилгээ, өдрийн хүсэлтийн тоо. Хоосон үйлчилгээг харуулаагүй"],
-          ["Pivot", "Засварын төрөл / байршил / үйлчилгээ / хоногоор бүлэглэсэн тоо"],
-          ["Хүлээлт", "Хоног = " + res.today + " − Хүсэлт гаргасан өдөр. Бүлэг: Өнөөдөр (0), 1–3, 4–7, 8+ хоног"],
+          ["Sheet1", "Pivot: Count of Засварын төрөл. Мөр: Засварын байршил → Үйлчилгээ ((blank) = үйлчилгээ хоосон). Багана: Хүсэлт гаргасан өдөр"],
+          ["Sheet2", "D5-аас: байршил (үйлчилгээтэй бол тод хөх), үйлчилгээ (цайвар хөх), өдөр бүрийн хүсэлтийн тоо, «Хүсэлт» нийт, «Нийт хүсэлт» мөр. Хоосон үйлчилгээг тусдаа мөр болгоогүй"],
           ["Эх sheet", "Өөрчлөөгүй, хэвээр"],
+          ["Т/Х -ийн тоо", res.techCount + " = давхардаагүй Техникийн №-ийн тоо (" + res.reqs.length + " хүсэлтээс)"],
           ["Алгассан мөр", res.skipped ? res.skipped + " (нийт дүнгийн эсвэл огноогүй мөр)" : "алга"]
         ] },
-        { name: "Хүсэлт тус бүр", widths: [14, 16, 16, 16, 12, 8, 12], rows: [["Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлтийн өдөр", "Хоног", "Бүлэг"]]
-          .concat(res.reqs.map(function (q) { return [q.tech, q.type, q.loc, q.srv, q.day, q.days, res.bucketOf(q)]; })) }
+        { name: "Хүсэлт тус бүр", widths: [14, 16, 16, 16, 12, 60], rows: [["Техникийн №", "Засварын төрөл", "Байршил", "Үйлчилгээ", "Хүсэлтийн өдөр", "Тайлбар"]]
+          .concat(res.reqs.map(function (q) { return [q.tech, q.type, q.loc, q.srv, q.day, q.desc]; })) }
       ]);
       if (res.skipped) show("z-result", "warn", res.skipped + " мөрийг алгассан (нийт дүнгийн мөр эсвэл огноогүй мөр).", true);
       renderZasvar(res);
@@ -2714,27 +2735,59 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       $("z-go").disabled = !zfile;
     }
   };
-  function renderZasvar(res) {
-    var w = res.waiting;
-    $("z-stats").innerHTML = [
-      ["Нийт хүсэлт", res.reqs.length, ""],
-      ["Өнөөдөр", w["Өнөөдөр"] || 0, ""],
-      ["1–3 хоног", w["1–3 хоног"] || 0, ""],
-      ["4–7 хоног", w["4–7 хоног"] || 0, ""],
-      ["8+ хоног", w["8+ хоног"] || 0, (w["8+ хоног"] || 0) ? "hot" : ""]
-    ].map(function (s) { return '<div class="stat ' + s[2] + '"><b>' + s[1] + "</b><span>" + esc(s[0]) + "</span></div>"; }).join("");
+  /* Email draft exactly like the team's daily mail: greeting, totals, the coloured table. */
+  var zres = null;
+  function zTableHtml(res) {
     var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     var lab = function (k) { var p = k.split("-"); return p[2] + "-" + MON[+p[1] - 1]; };
-    var h = '<tr class="navy"><td>Засварын төрөл</td>' + res.days.map(function (d) { return "<td>" + lab(d) + "</td>"; }).join("") + "<td>Хүсэлт</td></tr>";
+    var C = { navy: ["#203864", "#ffffff", 700], blue: ["#2F5597", "#ffffff", 700], light: ["#8FAADC", "#000000", 400] };
+    var td = function (cls, v, first) { var c = C[cls];
+      return '<td style="background:' + c[0] + ";color:" + c[1] + ";font-weight:" + c[2] + ";border:1px solid #000;padding:1px 6px;text-align:center;vertical-align:middle;font-family:Calibri,Arial,sans-serif;font-size:11pt;" +
+        (first ? "width:140px;" : "width:70px;") + '">' + (v === "" || v == null ? "&nbsp;" : esc(v)) + "</td>"; };
     var hasServices = {};
     res.table.forEach(function (row, i) { if (row.loc && res.table[i + 1] && !res.table[i + 1].loc && !res.table[i + 1].total) hasServices[i] = 1; });
+    var h = "<tr>" + td("navy", "Засварын төрөл", 1) + res.days.map(function (d) { return td("navy", lab(d)); }).join("") + td("navy", "Хүсэлт") + "</tr>";
     res.table.forEach(function (row, i) {
       var cls = row.total ? "navy" : row.loc && hasServices[i] ? "blue" : "light";
       var c = {}; row.list.forEach(function (q) { c[q.day] = (c[q.day] || 0) + 1; });
-      h += '<tr class="' + cls + '"><td>' + esc(row.label) + "</td>" + res.days.map(function (d) { return "<td>" + (c[d] || "") + "</td>"; }).join("") + "<td>" + row.list.length + "</td></tr>";
+      h += "<tr>" + td(cls, row.label, 1) + res.days.map(function (d) { return td(cls, c[d] || ""); }).join("") + td(cls, row.list.length) + "</tr>";
     });
-    $("z-table").innerHTML = h;
+    return '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-family:Calibri,Arial,sans-serif;font-size:11pt">' + h + "</table>";
+  }
+  function zMail() {
+    if (!zres) return;
+    var n = $("z-wait").value.trim(), p = function (t) { return '<div style="font-family:Calibri,Arial,sans-serif;font-size:11pt">' + (t ? esc(t) : "<br>") + "</div>"; };
+    $("z-mail").innerHTML = p("Өглөөний мэнд.") + p("") + p("Тээврийн хэрэгслийн засварын хүсэлтийн мэдээлэл хүргүүлж байна.") +
+      (n ? p("УХ-Засварын хэсэгт " + n + " чирэгч засвар хүлээлгэнд байна.") : "") + p("") +
+      p("Нийт хүсэлт-" + zres.reqs.length) + p("Т/Х -ийн тоо-" + zres.techCount) + p("") + zTableHtml(zres);
+  }
+  try { $("z-wait").value = localStorage.getItem("zWait") || ""; } catch (e) { /* storage unavailable */ }
+  $("z-wait").oninput = function () { try { localStorage.setItem("zWait", $("z-wait").value.trim()); } catch (e) { /* storage unavailable */ } zMail(); };
+  $("z-copy").onclick = function () {
+    var box = $("z-mail"), sel = window.getSelection(), r = document.createRange();
+    r.selectNodeContents(box); sel.removeAllRanges(); sel.addRange(r);
+    var ok = false; try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    sel.removeAllRanges();
+    $("z-copied").textContent = ok ? "Хууллаа ✓ Имэйлдээ Ctrl+V хийнэ үү" : "Хуулж чадсангүй — драфтыг хулганаар сонгоод Ctrl+C хийнэ үү";
+    setTimeout(function () { $("z-copied").textContent = ""; }, 4000);
+  };
+  function renderZasvar(res) {
+    zres = res; zMail();
     $("z-preview").hidden = false;
+    var nd = res.dups.reduce(function (a, d) { return a + d.list.length; }, 0);
+    $("z-stats").innerHTML = [
+      ["Нийт хүсэлт", res.reqs.length, ""],
+      ["Т/Х -ийн тоо", res.techCount, ""],
+      ["Давхардсан Т/Х", res.dups.length, res.dups.length ? "hot" : ""],
+      ["Давхардсан хүсэлт", nd, nd ? "hot" : ""]
+    ].map(function (s) { return '<div class="stat ' + s[2] + '"><b>' + s[1] + "</b><span>" + esc(s[0]) + "</span></div>"; }).join("");
+    $("z-duplist").innerHTML = res.dups.length
+      ? '<div class="tablewrap"><table class="plain"><thead><tr><th>Техникийн №</th><th>Хүсэлт</th><th>Өдөр</th><th>Засварын төрөл</th><th>Байршил</th><th>Үйлчилгээ</th><th>Тайлбар</th></tr></thead><tbody>' +
+        res.dups.map(function (d) { return d.list.map(function (q, i) {
+          return '<tr class="' + (i ? "" : "dupfirst") + '"><td>' + (i ? "" : "<b>" + esc(d.tech) + "</b>") + "</td><td>" + (i ? "" : d.list.length) + "</td><td>" + esc(q.day) + "</td><td>" + esc(q.type) + "</td><td>" + esc(q.loc) + "</td><td>" + esc(q.srv === "(хоосон)" ? "" : q.srv) + "</td><td>" + esc(q.desc) + "</td></tr>"; }).join(""); }).join("") +
+        "</tbody></table></div>"
+      : '<div class="msg ok">Давхардсан техник алга: ' + res.reqs.length + " хүсэлт = " + res.techCount + " Т/Х.</div>";
+    $("z-dup").hidden = false;
   }
 
   /* ================= MEDEE ================= */
