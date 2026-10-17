@@ -1,6 +1,6 @@
 ---
 name: zasvariin-huselt
-description: Засварын хүсэлтийн тайлан. Mine2TL-ээс гаргасан засварын хүсэлтийн Excel-ээс (Google Drive → "засварын хүсэлт" хавтас) байршил → үйлчилгээ, хүсэлт гаргасан өдрөөр тоолсон "Тайлан" хүснэгт, Pivot, хүлээлтийн хугацааны хүснэгт гаргана. Use when the user types /zasvariin-huselt (or /zasvar) or asks for the repair request (засварын хүсэлт) report.
+description: Засварын хүсэлтийн тайлан. Mine2TL-ээс гаргасан засварын хүсэлтийн Excel-ээс (Google Drive → "засварын хүсэлт" хавтас) багийн эцсийн тайлантай ижил Sheet1 (pivot), Sheet2 (D5-аас байршил → үйлчилгээ × өдөр хүснэгт) гаргаж, имэйлийн драфт (Нийт хүсэлт, Т/Х-ийн тоо, хүснэгт) ба давхардсан техникийг өгнө. Use when the user types /zasvariin-huselt (or /zasvar) or asks for the repair request (засварын хүсэлт) report.
 ---
 
 # /zasvariin-huselt: засварын хүсэлтийн тайлан
