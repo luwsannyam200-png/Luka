@@ -9,7 +9,7 @@
   --bg: #eef3f6; --panel: #ffffff; --text: #1d2a35; --muted: #5a6b7a; --line: #d3dde5;
   --accent: #0f8b8d; --accent-text: #ffffff; --ok: #2e7d4f; --ok-bg: #e3f3ea;
   --warn: #8a5a00; --warn-bg: #fdf1d8; --bad: #b8322c; --bad-bg: #fce8e6; --drop: #e9f1f7;
-  --c-weekly: #3474d4; --c-tltkh: #2e7d4f; --c-zasvar: #c9522d; --c-medee: #7656c9; --c-chat: #0f8b8d;
+  --c-weekly: #3474d4; --c-tltkh: #2e7d4f; --c-zasvar: #c9522d; --c-medee: #7656c9; --c-chat: #0f8b8d; --c-loader: #4f7d1f;
   --navy: #1F3864; --blue: #2F5597; --light: #8EA9DB;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,7 +17,7 @@
     --bg: #10171c; --panel: #172128; --text: #e4ecf1; --muted: #93a5b2; --line: #2b3b46;
     --accent: #3fc1bd; --accent-text: #06201f; --ok: #6fd3a0; --ok-bg: #173226;
     --warn: #f1c46b; --warn-bg: #3a2f14; --bad: #ff8a80; --bad-bg: #3d1c1a; --drop: #1d2a33;
-    --c-weekly: #6ea4f5; --c-tltkh: #5cc58a; --c-zasvar: #ff8a66; --c-medee: #a98df0; --c-chat: #3fc1bd;
+    --c-weekly: #6ea4f5; --c-tltkh: #5cc58a; --c-zasvar: #ff8a66; --c-medee: #a98df0; --c-chat: #3fc1bd; --c-loader: #9ccf5c;
   }
 }
 * { box-sizing: border-box; }
@@ -115,11 +115,12 @@ tr.dupfirst td { border-top: 2px solid var(--tc, var(--line)); }
 .tab[data-tool="zasvar"], #tool-zasvar { --tc: var(--c-zasvar); }
 .tab[data-tool="medee"], #tool-medee { --tc: var(--c-medee); }
 .tab[data-tool="chat"], #tool-chat { --tc: var(--c-chat); }
+.tab[data-tool="loader"], #tool-loader { --tc: var(--c-loader); }
 .tab { border-top: 4px solid color-mix(in srgb, var(--tc) 60%, var(--line)); }
 .tab b { color: color-mix(in srgb, var(--tc) 80%, var(--text)); }
 .tab[aria-selected="true"] { border-color: var(--tc); box-shadow: 0 0 0 1px var(--tc) inset; background: color-mix(in srgb, var(--tc) 9%, var(--panel)); }
-#tool-weekly, #tool-tltkh, #tool-zasvar, #tool-medee, #tool-chat { --accent: var(--tc); --drop: color-mix(in srgb, var(--tc) 7%, var(--panel)); }
-#tool-weekly .panel, #tool-tltkh .panel, #tool-zasvar .panel, #tool-medee .panel, #tool-chat .panel { border-top: 3px solid color-mix(in srgb, var(--tc) 50%, var(--line)); }
+#tool-weekly, #tool-tltkh, #tool-zasvar, #tool-medee, #tool-loader, #tool-chat { --accent: var(--tc); --drop: color-mix(in srgb, var(--tc) 7%, var(--panel)); }
+#tool-weekly .panel, #tool-tltkh .panel, #tool-zasvar .panel, #tool-medee .panel, #tool-loader .panel, #tool-chat .panel { border-top: 3px solid color-mix(in srgb, var(--tc) 50%, var(--line)); }
 .panel h2 { color: color-mix(in srgb, var(--tc, var(--accent)) 80%, var(--text)); }
 .drop { border-color: color-mix(in srgb, var(--tc, var(--accent)) 35%, var(--line)); }
 th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); }
@@ -136,6 +137,7 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
     <button class="tab" role="tab" id="tab-tltkh" data-tool="tltkh"><b>📑 TL_TKH</b><span>Oracle үлдэгдлийг УХ / ЦХ-ээр янзлах</span></button>
     <button class="tab" role="tab" id="tab-zasvar" data-tool="zasvar"><b>🔧 Засварын хүсэлт</b><span>Mine2TL-ийн хүсэлтээс тайлан гаргах</span></button>
     <button class="tab" role="tab" id="tab-medee" data-tool="medee"><b>📋 Засварын мэдээ</b><span>Mine2TL-ийн мэдээг цэвэрлэж цаг бодох</span></button>
+    <button class="tab" role="tab" id="tab-loader" data-tool="loader"><b>🚜 Loader PM</b><span>PUU-ийн мото цаг, ТҮ архивлах</span></button>
     <button class="tab" role="tab" id="tab-chat" data-tool="chat"><b>💬 Туслах</b><span>Файлуудаас асуултаар хайх</span></button>
   </div>
 
@@ -252,6 +254,42 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
     </section>
   </div>
 
+  <!-- ================= LOADER PM ================= -->
+  <div id="tool-loader" hidden>
+    <section class="panel">
+      <h2>1. Файлууд</h2>
+      <div class="drop" id="l-drop"><b>Loader PM</b> файл, PUU-ийн мото цаг (<b>Timemotion.xlsx</b> эсвэл имэйлийн <b>зураг</b>), <b>засварын мэдээ</b>, хүсвэл <b>архив</b> файлаа энд <b>чирж</b> оруулна уу, эсвэл <b>дарж</b> сонгоно уу.<br><small>Snipping Tool-оор авсан зургийг энэ хуудсан дээр <b>Ctrl+V</b> дарж шууд буулгаж болно. Файлыг агуулгаар нь өөрөө ангилна.</small></div>
+      <input type="file" id="l-file" accept=".xlsx,.xlsm,image/*" multiple hidden>
+      <div class="slots" id="l-slots"></div>
+      <div class="slots" id="l-src" style="margin-top:8px"></div>
+      <details style="margin-top:8px"><summary>PUU-ийн имэйлийн текстийг хуулж буулгах</summary>
+        <textarea id="l-text" rows="4" style="width:100%;margin-top:6px" placeholder="Улсын дугаар · Парк · Сүүлийн м/цаг"></textarea>
+        <button class="btn" id="l-text-go">Унших</button></details>
+      <div id="l-msg"></div>
+    </section>
+    <section class="panel" id="l-hours" hidden>
+      <h2>2. Мото цаг</h2>
+      <p class="sub" style="margin:0 0 8px">Зургаас уншсан тоог шалгаарай, буруу бол «Шинэ (PUU)» нүдэнд засна. Тоолуур сольсон техникт одоогийн (цайвар цэнхэр) тоолуурын нүдэнд бичнэ.</p>
+      <div class="stats" id="l-hstat"></div>
+      <div class="tablewrap"><table class="plain" id="l-htab"></table></div>
+    </section>
+    <section class="panel" id="l-pm" hidden>
+      <h2>3. ТҮ-д орсон ачигч (засварын мэдээнээс)</h2>
+      <p class="sub" style="margin:0 0 8px">Чагталсан техник архивлагдана: E = «өнөөдөр шинэчлэлтээс өмнөх мото цаг», U ← V, архивт мөр нэмнэ. ⚠ мөрийг шалгаад өөрөө шийднэ.</p>
+      <div class="tablewrap"><table class="plain" id="l-ptab"></table></div>
+    </section>
+    <section class="panel">
+      <h2>4. Үүсгэх</h2>
+      <div class="row">
+        <button class="btn primary" id="l-go" disabled>Loader PM файл үүсгэх</button>
+        <button class="btn" id="l-reset">Шинээр эхлэх</button>
+        <span id="l-status" class="sub" style="margin:0"></span>
+      </div>
+      <p class="sub" style="margin:6px 0 0;font-size:13px">Файлын бусад бүх зүйл (томьёо, өнгө, бусад хуудас) хэвээр. X багана: шар = шинэчлэгдсэн, улаан = бага ирсэн, цагаан = ирээгүй.</p>
+      <div id="l-result"></div>
+    </section>
+  </div>
+
   <!-- ================= ASSISTANT ================= -->
   <div id="tool-chat" hidden>
     <section class="panel">
@@ -284,6 +322,11 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
 <script>/*ZASVAR_CORE*/</script>
 <script>/*MEDEE_CORE*/</script>
 <script>/*ASSISTANT_CORE*/</script>
+<script>/*LOADER_CORE*/</script>
+<script>/*TESSERACT*/</script>
+<script type="text/plain" id="ocr-core">/*OCR_CORE*/</script>
+<script type="text/plain" id="ocr-worker">/*OCR_WORKER*/</script>
+<script type="text/plain" id="ocr-lang">/*OCR_LANG*/</script>
 <script>
 (function () {
   "use strict";
@@ -330,7 +373,7 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
   }
 
   /* ---------- tool switcher ---------- */
-  var TOOLS = ["weekly", "tltkh", "zasvar", "medee", "chat"];
+  var TOOLS = ["weekly", "tltkh", "zasvar", "medee", "loader", "chat"];
   function choose(tool) {
     TOOLS.forEach(function (t) {
       $("tool-" + t).hidden = t !== tool;
@@ -572,6 +615,170 @@ th { background: color-mix(in srgb, var(--tc, var(--accent)) 8%, var(--panel)); 
     $("w-tablePanel").hidden = false;
   }
   renderSlots();
+
+  /* ================= LOADER PM =================
+     Loader PM файл + PUU-ийн мото цаг (Timemotion.xlsx, имэйлийн зураг/текст) + засварын мэдээ (+ архив) →
+     мото цаг бичсэн, ТҮ-д орсон ачигчийг архивласан Loader PM файл (+ архив файл). OCR: Tesseract (монгол), интернэтгүй. */
+  var L = { loader: null, info: null, puu: [], rep: null, reps: [], arch: null, vals: {}, picks: {} };
+  function lErr(e) { return esc(e && e.message ? e.message : e); }
+  var ocrWorker = null;
+  async function ocrText(blob, onProg) {
+    if (!ocrWorker) {
+      var core = $("ocr-core").textContent, wsrc = $("ocr-worker").textContent, lang = $("ocr-lang").textContent.trim();
+      var pre = "self.__LB64=" + JSON.stringify(lang) + ";var __of=self.fetch;self.fetch=function(u){if(/traineddata/.test(String(u))){var s=atob(self.__LB64),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return Promise.resolve(new Response(a));}return __of.apply(self,arguments);};\n";
+      var url = URL.createObjectURL(new Blob([pre, core, "\n", wsrc], { type: "application/javascript" }));
+      ocrWorker = await Tesseract.createWorker("mon", 1, { workerPath: url, workerBlobURL: false, corePath: "https://local/core.js", langPath: "https://local", cacheMethod: "none",
+        logger: function (m) { if (onProg && m.status === "recognizing text") onProg(m.progress); } });
+      await ocrWorker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
+    }
+    var r = await ocrWorker.recognize(await ocrPrep(blob));
+    return r.data.text;
+  }
+  /* Жижиг дэлгэцийн зургийг томруулж, саарал + тодруулж танилтыг сайжруулна */
+  async function ocrPrep(blob) {
+    var img = await createImageBitmap(blob), k = Math.max(1, Math.min(4, 2400 / img.width));
+    var c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    var g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, c.width, c.height);
+    var d = g.getImageData(0, 0, c.width, c.height), a = d.data;
+    for (var i = 0; i < a.length; i += 4) { var y = 0.299 * a[i] + 0.587 * a[i + 1] + 0.114 * a[i + 2]; y = y < 150 ? 0 : 255; a[i] = a[i + 1] = a[i + 2] = y; }
+    // Хүснэгтийн хүрээний урт шугамыг арилгана (эс бөгөөс Tesseract мөрүүдийг зураг гэж алгасдаг)
+    var W = c.width, H = c.height, dark = function (x, y) { return a[(y * W + x) * 4] === 0; }, wipe = function (x, y) { var j = (y * W + x) * 4; a[j] = a[j + 1] = a[j + 2] = 255; };
+    var runLen = Math.max(40, W * 0.15), x, y, n, s0;
+    for (y = 0; y < H; y++) for (x = 0, n = 0; x <= W; x++) { if (x < W && dark(x, y)) { n++; continue; } if (n >= runLen) for (s0 = x - n; s0 < x; s0++) wipe(s0, y); n = 0; }
+    var colLen = Math.max(30, 60 * k / 2);
+    for (x = 0; x < W; x++) for (y = 0, n = 0; y <= H; y++) { if (y < H && dark(x, y)) { n++; continue; } if (n >= colLen) for (s0 = y - n; s0 < y; s0++) wipe(x, s0); n = 0; }
+    g.putImageData(d, 0, 0);
+    return c;
+  }
+  function lSlots() {
+    var row = function (label, hint, file) { return '<div class="slot"><div class="label">' + label + "<small>" + hint + '</small></div><div class="file' + (file ? " set" : "") + '">' + (file ? esc(file) : "сонгоогүй") + "</div><div></div></div>"; };
+    $("l-slots").innerHTML = row("Loader PM", "заавал, LONKING хуудастай", L.loader && L.loader.name) +
+      row("PUU мото цаг", "Timemotion.xlsx, имэйлийн зураг, текст", L.puu.map(function (p) { return p.name + (p.busy ? " (уншиж байна…)" : p.items ? " (" + p.items.length + ")" : ""); }).join(", ")) +
+      row("Засварын мэдээ", "ТҮ-д орсон ачигчийг олох", L.rep && L.rep.name) +
+      row("ТҮ-ийн архив", "заавал биш, «&lt;он&gt; loader archive.xlsx»", L.arch && L.arch.name);
+    $("l-go").disabled = !L.info;
+  }
+  async function lAdd(list) {
+    list = Array.prototype.slice.call(list);   // FileList-ийг wireDrop шууд цэвэрлэдэг
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      try {
+        if (/^image\//.test(f.type)) { lImage(f); continue; }
+        if (!/\.xls[xm]$/i.test(f.name)) { show("l-msg", "warn", esc(f.name) + ": .xlsx эсвэл зураг оруулна уу", true); continue; }
+        var b = await read(f);
+        if (await LoaderCore.isLoaderBook(b)) { L.loader = { name: f.name, bytes: b }; L.info = await LoaderCore.readLoader(b); L.vals = {}; }
+        else if (LoaderCore.isRepairBook(b)) { L.rep = { name: f.name, bytes: b }; L.picks = {}; }
+        else if (LoaderCore.isArchiveBook(b)) { L.arch = { name: f.name, bytes: b }; }
+        else L.puu.push({ name: f.name, kind: "xlsx", bytes: b });
+      } catch (e) { show("l-msg", "bad", esc(f.name) + ": " + lErr(e), true); }
+    }
+    lRefresh();
+  }
+  function lImage(f) {
+    var p = { name: f.name || "зураг", kind: "img", url: URL.createObjectURL(f), busy: true, text: "" };
+    L.puu.push(p); lRefresh();
+    ocrText(f, function (pr) { p.prog = Math.round(pr * 100); var el = document.querySelector('[data-lprog="' + L.puu.indexOf(p) + '"]'); if (el) el.textContent = p.prog + "%"; })
+      .then(function (t) { p.text = t; }).catch(function (e) { p.err = lErr(e); }).then(function () { p.busy = false; lRefresh(); });
+  }
+  function lParse() {
+    var ms = L.info ? L.info.machines : [], merged = {};
+    L.puu.forEach(function (p, i) {
+      if (!L.info || p.busy) return;
+      if (p.kind === "xlsx") { p.items = LoaderCore.parsePuuBook(p.bytes, ms) || []; if (!p.items.length) p.note = "мото цаг олдсонгүй"; }
+      else p.items = LoaderCore.parsePuuText(p.text, ms);
+      p.items.forEach(function (it) { merged[it.row] = { value: it.value, src: p.name, line: it.line, i: i }; });
+    });
+    return merged;
+  }
+  function lRefresh() {
+    lSlots();
+    var merged = lParse(), ms = L.info ? L.info.machines : [];
+    // эх сурвалжийн жагсаалт (зураг + OCR текст)
+    $("l-src").innerHTML = L.puu.map(function (p, i) {
+      return '<div class="slot"><div class="label">' + (p.kind === "img" ? '<img src="' + p.url + '" alt="" data-lzoom="' + i + '" style="max-width:150px;max-height:90px;border-radius:6px;cursor:zoom-in">' : "📄") + '</div><div class="file set">' + esc(p.name) +
+        (p.busy ? ' — зураг уншиж байна <b data-lprog="' + i + '">' + (p.prog || 0) + "%</b>" : p.err ? ' — <span style="color:var(--bad)">' + p.err + "</span>" : p.items ? " — " + p.items.length + " техник танигдлаа" + (p.note ? " (" + p.note + ")" : "") : "") +
+        (p.kind !== "xlsx" && p.text ? '<details><summary class="sub" style="margin:0">Уншсан текст</summary><pre style="white-space:pre-wrap;font-size:12px">' + esc(p.text) + "</pre></details>" : "") +
+        '</div><div class="row"><button class="btn" data-ldel="' + i + '">Хасах</button></div></div>';
+    }).join("");
+    $("l-hours").hidden = !L.info;
+    if (L.info) {
+      var stat = { upd: 0, low: 0, jump: 0, none: 0 };
+      $("l-htab").innerHTML = "<thead><tr><th>Улсын дугаар</th><th>Загвар</th><th>Байр.</th><th>Эх сурвалж</th><th>Өмнөх тоолуур</th><th>Шинэ (PUU)</th><th>Мото цаг (Z)</th><th>Төлөв</th></tr></thead><tbody>" +
+        ms.map(function (x) {
+          var v = L.vals[x.row] != null ? L.vals[x.row] : merged[x.row] ? merged[x.row].value : null;
+          var h = LoaderCore.resolveHours(x, v), st = h ? h.status : "none"; stat[st]++;
+          var lab = { upd: h && h.value === h.old ? "өөрчлөлтгүй (шар)" : "шинэчлэгдэнэ (шар)", low: "өмнөхөөс бага — бичихгүй (улаан)", jump: "400+ цаг өссөн — шалгана уу", none: "ирээгүй (цагаан)" }[st];
+          var src = merged[x.row] ? merged[x.row] : null;
+          return '<tr class="' + (st === "low" ? "bad" : st === "jump" ? "warn" : "") + '"><td><b>' + esc(x.plate) + "</b></td><td>" + esc(x.model) + "</td><td>" + esc(x.loc) + "</td><td class='sub' style='margin:0' title='" + esc(src ? src.line : "") + "'>" + (L.vals[x.row] != null ? "гараар" : src ? esc(src.src) : "") +
+            "</td><td>" + (h ? h.old : x.refs[0] ? x.refs[0].value : "") + (h && h.ref !== "Z" + x.row ? " <span class='sub' style='margin:0'>(" + h.ref + ")</span>" : "") +
+            '</td><td><input type="text" inputmode="decimal" style="width:100px" data-lv="' + x.row + '" value="' + (v == null ? "" : v) + '"></td><td>' + (h ? h.newZ : x.Z == null ? "" : x.Z) + "</td><td>" + lab + "</td></tr>";
+        }).join("") + "</tbody>";
+      $("l-hstat").innerHTML = '<div class="stat"><b>' + stat.upd + '</b><span>шинэчлэгдэнэ</span></div><div class="stat"><b>' + stat.low + '</b><span>бага (бичихгүй)</span></div><div class="stat"><b>' + stat.jump + '</b><span>шалгах</span></div><div class="stat"><b>' + stat.none + "</b><span>ирээгүй</span></div>";
+    }
+    // ТҮ-д орсон ачигч
+    $("l-pm").hidden = !(L.info && L.rep);
+    if (L.info && L.rep) {
+      try { L.reps = LoaderCore.parseRepairs(L.rep.bytes, ms); } catch (e) { L.reps = []; show("l-msg", "bad", "Засварын мэдээ: " + lErr(e), true); }
+      $("l-ptab").innerHTML = L.reps.length ? "<thead><tr><th></th><th>Улсын дугаар</th><th>Бичсэн</th><th>Хуваарь (V)</th><th>Дууссан</th><th>Тайлбар</th><th>Анхаарах</th></tr></thead><tbody>" +
+        L.reps.map(function (r, i) {
+          var on = r.key in L.picks ? L.picks[r.key] : r.ok;
+          return '<tr class="' + (r.warn.length ? "warn" : "") + '"><td><input type="checkbox" data-lpick="' + i + '"' + (on ? " checked" : "") + "></td><td><b>" + esc(r.plate) + "</b><br><span class='sub' style='margin:0'>" + esc(r.model) + "</span></td><td>" + esc(r.written || "—") + "</td><td>" + esc(r.level) + " (" + (r.point == null ? "?" : r.point) + ")</td><td>" +
+            (r.end ? pad2(r.end.getMonth() + 1) + "/" + pad2(r.end.getDate()) + " " + pad2(r.end.getHours()) + ":" + pad2(r.end.getMinutes()) : "—") + "</td><td>" + esc(r.text) + "</td><td>" + r.warn.map(esc).join("<br>") + "</td></tr>";
+        }).join("") + "</tbody>" : "<tbody><tr><td>Энэ файлаас ачигчийн ТҮ олдсонгүй.</td></tr></tbody>";
+    }
+  }
+  function pad2(n) { return String(n).padStart(2, "0"); }
+  wireDrop("l-drop", "l-file", lAdd);
+  // Snipping Tool-ийн зургийг Ctrl+V-ээр шууд буулгах
+  document.addEventListener("paste", function (e) {
+    if ($("tool-loader").hidden) return;
+    var items = (e.clipboardData && e.clipboardData.items) || [], imgs = [];
+    for (var i = 0; i < items.length; i++) if (items[i].type.indexOf("image/") === 0) imgs.push(items[i].getAsFile());
+    if (!imgs.length) return;
+    e.preventDefault();
+    imgs.forEach(function (f, k) { lImage(new File([f], "Буулгасан зураг " + (L.puu.length + k + 1) + ".png", { type: f.type })); });
+  });
+  $("l-text-go").onclick = function () {
+    var t = $("l-text").value.trim(); if (!t) return;
+    L.puu.push({ name: "Буулгасан текст " + (L.puu.length + 1), kind: "text", text: t }); $("l-text").value = ""; lRefresh();
+  };
+  $("tool-loader").addEventListener("click", function (e) {
+    var d = e.target.closest("[data-ldel]"); if (d) { L.puu.splice(+d.dataset.ldel, 1); lRefresh(); return; }
+    var z = e.target.closest("[data-lzoom]");
+    if (z) { var lb = document.createElement("div"); lb.className = "lightbox"; lb.innerHTML = '<img src="' + z.getAttribute("src") + '" alt="">'; lb.onclick = function () { lb.remove(); }; document.body.appendChild(lb); }
+  });
+  $("tool-loader").addEventListener("change", function (e) {
+    var v = e.target.closest("[data-lv]");
+    if (v) { var n = parseFloat(String(v.value).replace(",", ".")); if (v.value.trim() === "") L.vals[+v.dataset.lv] = undefined; else if (isFinite(n)) L.vals[+v.dataset.lv] = n; lRefresh(); }
+    var p = e.target.closest("[data-lpick]"); if (p) L.picks[L.reps[+p.dataset.lpick].key] = p.checked;
+  });
+  $("l-reset").onclick = function () { L = { loader: null, info: null, puu: [], rep: null, reps: [], arch: null, vals: {}, picks: {} }; $("l-msg").innerHTML = ""; $("l-result").innerHTML = ""; lRefresh(); };
+  $("l-go").onclick = async function () {
+    if (!L.info) return;
+    var btn = $("l-go"); btn.disabled = true; $("l-result").innerHTML = ""; $("l-status").textContent = "Бэлдэж байна…"; await tick();
+    try {
+      var merged = lParse(), hours = L.info.machines.map(function (x) {
+        var v = L.vals[x.row] != null ? L.vals[x.row] : merged[x.row] ? merged[x.row].value : null; return { row: x.row, value: v };
+      }).filter(function (h) { return h.value != null; });
+      var pms = L.reps.filter(function (r) { return r.key in L.picks ? L.picks[r.key] : r.ok; }).map(function (r) { return { row: r.row }; });
+      var seen = {}; pms = pms.filter(function (p) { return seen[p.row] ? false : (seen[p.row] = 1); });
+      var res = await LoaderCore.buildLoader(L.loader.bytes, { hours: hours, pms: pms, today: new Date() });
+      var ok = show("l-result", "ok", "<b>" + esc(L.loader.name) + "</b>: " + hours.length + " техникийн мото цаг, " + res.archive.length + " ТҮ архивлав. Excel-ээр нээгээд шалгаад хадгална уу (томьёо автоматаар дахин тооцогдоно).");
+      var b1 = document.createElement("button"); b1.className = "btn primary"; b1.style.marginLeft = "10px"; b1.textContent = "Loader PM татах";
+      b1.onclick = function () { download(res.bytes, L.loader.name); }; ok.appendChild(b1);
+      if (res.archive.length) {
+        var ab, aname, note = "";
+        if (L.arch) { var ar = await LoaderCore.appendArchive(L.arch.bytes, res.archive); ab = ar.bytes; aname = L.arch.name; note = ar.added.length + " мөр нэмэгдэв" + (ar.skipped.length ? ", " + ar.skipped.length + " аль хэдийн байсан" : ""); }
+        else { ab = LoaderCore.newArchive(res.archive); aname = "ТҮ архивын мөр " + pad2(new Date().getMonth() + 1) + "-" + pad2(new Date().getDate()) + ".xlsx"; note = "архив файл оруулаагүй тул шинэ мөрүүдийг тусад нь гаргав — архив руугаа хуулна уу"; }
+        var b2 = document.createElement("button"); b2.className = "btn"; b2.style.marginLeft = "8px"; b2.textContent = "Архив татах";
+        b2.onclick = function () { download(ab, aname); }; ok.appendChild(b2);
+        show("l-result", "ok", "Архив: " + esc(note) + "<br>" + res.archive.map(function (a) { return esc(a.plate + " · " + a.b + " · " + a.point + " · " + a.level + (a.wo ? " · " + a.wo : "")); }).join("<br>"), true);
+      }
+      if (res.log.length) show("l-result", "warn", res.log.map(esc).join("<br>"), true);
+    } catch (e) { show("l-result", "bad", "<b>Алдаа:</b> " + lErr(e)); }
+    $("l-status").textContent = ""; btn.disabled = !L.info;
+  };
+  lSlots();
 
   /* ================= ZASVAR ================= */
   var zfile = null;
